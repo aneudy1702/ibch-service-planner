@@ -12,18 +12,20 @@ import {
   updatePerson,
   upsertAssignment,
 } from "./storage.js";
+import {
+  STATUS,
+  assertCanSelectPerson,
+  completeAssignment,
+  confirmAssignment,
+  createSelectionAssignment as buildSelectionAssignment,
+  declineAssignment,
+  getCurrentAssignmentForService,
+  getHomeActionState,
+} from "./assignment-workflow.js";
 import { selectNextPerson } from "./rotation.js";
 import { buildParticipationSummary, getHomeStats } from "./people.js";
 
 const OPENING_READING_ROLE_ID = "opening-reading";
-
-const STATUS = {
-  SELECTED: "selected",
-  CONFIRMED: "confirmed",
-  DECLINED: "declined",
-  COMPLETED: "completed",
-  CANCELLED: "cancelled",
-};
 
 const REASON_TEXT = {
   unavailable_service: "No está disponible para este servicio",
@@ -74,16 +76,17 @@ function formatDate(dateString) {
 }
 
 function getCurrentAssignment() {
-  const assignments = getAssignments();
-  const current = assignments
-    .filter(
-      (item) =>
-        item.roleId === OPENING_READING_ROLE_ID &&
-        item.serviceDate === stateRefs.currentDate &&
-        [STATUS.SELECTED, STATUS.CONFIRMED].includes(item.status),
-    )
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
-  return current || null;
+  return getCurrentAssignmentForService(
+    getAssignments(),
+    OPENING_READING_ROLE_ID,
+    stateRefs.currentDate,
+  );
+}
+
+function setButtonState(buttonId, enabled) {
+  const button = document.getElementById(buttonId);
+  button.hidden = !enabled;
+  button.disabled = !enabled;
 }
 
 function renderHome() {
@@ -97,6 +100,12 @@ function renderHome() {
   document.getElementById("next-service-label").textContent = formatDate(stateRefs.currentDate);
   document.getElementById("assignment-person").textContent = currentPerson?.name || "Sin asignación";
   document.getElementById("assignment-status").textContent = `Estado: ${STATUS_TEXT[currentAssignment?.status || "none"]}`;
+
+  const actionState = getHomeActionState(currentAssignment);
+  setButtonState("btn-select-person", actionState.canSelect);
+  setButtonState("btn-confirm", actionState.canConfirm);
+  setButtonState("btn-complete", actionState.canComplete);
+  setButtonState("btn-decline", actionState.canDecline);
 
   const stats = getHomeStats(people, assignments, OPENING_READING_ROLE_ID);
   const statsRoot = document.getElementById("home-stats");
@@ -118,20 +127,25 @@ function renderHome() {
 }
 
 function createSelectionAssignment(personId) {
-  const record = {
+  const record = buildSelectionAssignment({
     id: uid("assignment"),
     personId,
     roleId: OPENING_READING_ROLE_ID,
     serviceDate: stateRefs.currentDate,
-    status: STATUS.SELECTED,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
+  });
   addAssignment(record);
   return record;
 }
 
 function selectPerson() {
+  const current = getCurrentAssignment();
+  try {
+    assertCanSelectPerson(current);
+  } catch (error) {
+    alert(error.message);
+    return;
+  }
+
   const people = getPeople();
   const assignments = getAssignments();
   const picked = selectNextPerson({
@@ -146,60 +160,40 @@ function selectPerson() {
     return;
   }
 
-  const current = getCurrentAssignment();
-  if (current) {
-    upsertAssignment({
-      ...current,
-      status: STATUS.CANCELLED,
-      updatedAt: new Date().toISOString(),
-    });
-  }
   createSelectionAssignment(picked.id);
   renderAll();
 }
 
 function confirmCurrentAssignment() {
   const current = getCurrentAssignment();
-  if (!current) {
-    alert("Primero seleccione una persona.");
+  try {
+    upsertAssignment(confirmAssignment(current));
+  } catch (error) {
+    alert(error.message);
     return;
   }
-  upsertAssignment({
-    ...current,
-    status: STATUS.CONFIRMED,
-    updatedAt: new Date().toISOString(),
-  });
   renderAll();
 }
 
 function completeCurrentAssignment() {
   const current = getCurrentAssignment();
-  if (!current) {
-    alert("No hay una asignación activa para completar.");
+  try {
+    upsertAssignment(completeAssignment(current));
+  } catch (error) {
+    alert(error.message);
     return;
   }
-  upsertAssignment({
-    ...current,
-    status: STATUS.COMPLETED,
-    updatedAt: new Date().toISOString(),
-  });
   renderAll();
 }
 
 function declineAndReplace(reasonCode, reasonText) {
   const current = getCurrentAssignment();
-  if (!current) {
-    alert("No hay una asignación para reemplazar.");
+  try {
+    upsertAssignment(declineAssignment(current, { reasonCode, reasonText }));
+  } catch (error) {
+    alert(error.message);
     return;
   }
-
-  upsertAssignment({
-    ...current,
-    status: STATUS.DECLINED,
-    reasonCode,
-    reasonText,
-    updatedAt: new Date().toISOString(),
-  });
 
   if (reasonCode === "pause") {
     updatePerson(current.personId, { paused: true });
@@ -429,6 +423,10 @@ function setupAssignmentActions() {
   document.getElementById("btn-confirm").addEventListener("click", confirmCurrentAssignment);
   document.getElementById("btn-complete").addEventListener("click", completeCurrentAssignment);
   document.getElementById("btn-decline").addEventListener("click", () => {
+    if (!getHomeActionState(getCurrentAssignment()).canDecline) {
+      alert("No hay una asignación activa para reemplazar.");
+      return;
+    }
     document.getElementById("decline-dialog").showModal();
   });
 
