@@ -10,7 +10,7 @@ Version 1 only supports one active role:
 
 The app supports:
 
-- People management (add, rename, activate/deactivate, pause)
+- People management (add, rename, title, activate/deactivate, pause)
 - Assignment workflow (`selected`, `confirmed`, `declined`, `completed`, `cancelled`)
 - Decline reasons and replacement selection
 - Assignment history + simple participation summary
@@ -19,34 +19,50 @@ The app supports:
 
 ## Architecture
 
-Static files only:
+Static app + minimal Cloudflare Pages Functions:
 
 - `index.html`: App shell and views (Home, People, History, Settings)
 - `css/app.css`: Mobile-first styling
-- `js/storage.js`: Versioned localStorage data abstraction
+- `js/app.js`: UI wiring and workflow behavior
+- `js/data.js`: People data access boundary (D1-first with local cache fallback)
+- `js/storage.js`: localStorage abstraction for cached people + local assignments/history/settings
+- `js/people-model.js`: people normalization (including pastor deduplication) + title display helpers
+- `functions/api/people.js`: minimal API (`GET`, `POST`, `PATCH`) backed by D1
+- `migrations/0001_people.sql`: D1 schema + idempotent people seed
 - `js/rotation.js`: Selection/rotation logic
 - `js/people.js`: Participation summaries/stat helpers
-- `js/app.js`: UI wiring and workflow behavior
-- `data/people.json`: Initial seed list
 - `manifest.json` + `service-worker.js`: PWA install/offline support
-
-No backend, database, authentication, framework, or build system is used.
 
 ## Data storage
 
-Runtime persistence uses browser `localStorage` through `js/storage.js` only.
+### Shared in Cloudflare D1 (source of truth)
 
-Stored model includes:
-
-- `version: 1`
 - `people`
-- `roles`
-- `services`
-- `assignments`
-- `settings`
-- `meta`
+  - `id`, `name`, `title`, `active`, `paused`, `created_at`, `updated_at`
 
-On first load, people are seeded from `data/people.json`. After that, data is managed from localStorage.
+People edits now sync across trusted users/devices through D1.
+
+### Local-only in browser `localStorage`
+
+- Assignments/history
+- Next service date settings
+- Local cache of people used for fallback when D1 is temporarily unavailable
+
+The app no longer treats stale local cache as authoritative when D1 is reachable.
+
+## Pastor canonical record
+
+The duplicated pastor records were consolidated into one canonical person:
+
+```json
+{
+  "id": "person-carlos-pacheco",
+  "name": "Carlos Pacheco",
+  "title": "Pastor"
+}
+```
+
+`person-el-pastor` is removed from seed/migration and cleaned from normalized local data.
 
 ## Rotation behavior (high level)
 
@@ -75,56 +91,50 @@ python3 -m http.server 8080
 
 Then open `http://localhost:8080`.
 
-## Production deployment (Cloudflare Pages)
+## Production deployment (Cloudflare Pages + D1)
 
 Production deploys run automatically from GitHub Actions on every push to `main`.
 
 Flow:
 
 1. `npm test` runs in CI
-2. If tests pass, GitHub Actions deploys the repository root (`.`) to Cloudflare Pages using Wrangler Direct Upload
+2. D1 migrations are applied remotely
+3. GitHub Actions deploys the repository root (`.`) to Cloudflare Pages using Wrangler Direct Upload
 
-Cloudflare Pages configuration:
+Cloudflare configuration secrets:
 
-- Project name: `ibch-service-planner`
-- Required repository secrets:
-  - `CLOUDFLARE_API_TOKEN`
-  - `CLOUDFLARE_ACCOUNT_ID`
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
 
-Deployment status is visible in the **Actions** tab in the `Deploy` workflow run logs (including the generated `*.pages.dev` URL).
+Deployment workflow environment constant:
 
-### One-time setup
+- `CLOUDFLARE_D1_DATABASE_NAME=ibch-service-planner` (defined in `.github/workflows/deploy.yml`)
+
+## One-time Cloudflare setup
 
 1. Add GitHub repository secrets:
    - `CLOUDFLARE_API_TOKEN`
    - `CLOUDFLARE_ACCOUNT_ID`
-2. Go to GitHub Actions.
-3. Run the **Initialize Cloudflare Pages** workflow once.
-4. Confirm the Pages project is created successfully.
+2. Ensure `CLOUDFLARE_API_TOKEN` includes permissions for **both**:
+   - Cloudflare Pages deployment
+   - Cloudflare D1 database create/migration operations
+   - If your token currently has Pages-only scope, update or replace it to include D1 management permissions.
+3. Run **Initialize Cloudflare Pages** workflow once.
+4. Run **Initialize Cloudflare D1** workflow once (creates DB and applies migrations).
+5. In Cloudflare Pages project settings, add a D1 binding:
+   - Binding name: `DB`
+   - Database: `ibch-service-planner`
 
-### Normal operation afterward
+After this setup, normal deployments on `main` run tests, apply migrations, and deploy.
 
-Every push/merge to `main`:
+## API error handling
 
-1. runs tests
-2. deploys automatically to Cloudflare Pages if tests pass
-
-No Cloudflare dashboard action is required for normal deployments after initialization.
-
-After setup, production is available at the Pages domain (for example `https://ibch-service-planner.pages.dev`).
-
-## localStorage limitations
-
-- Data is per browser/device
-- Clearing browser site data removes app data
-- Data does not sync automatically across devices
-
-Use **Export Backup** regularly and **Import Backup** when restoring/migrating.
+If the people API is unavailable, the app shows a clear Spanish warning and keeps user edits in local cache instead of silently dropping them. Those edits are not considered synced until D1 is reachable again.
 
 ## Backup and import
 
 - Export creates full app model JSON (for example `ibch-service-planner-backup-YYYY-MM-DD.json`)
-- Import validates schema version, people, assignments, IDs, statuses, service dates, and settings before replacing current data
+- Import validates schema version, people, assignments, IDs, statuses, service dates, and settings before replacing current local state
 
 ## Dates
 

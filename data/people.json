@@ -1,7 +1,6 @@
 {
   "people": [
-    { "id": "person-el-pastor", "name": "El Pastor" },
-    { "id": "person-carlos-pacheco", "name": "Carlos Pacheco" },
+    { "id": "person-carlos-pacheco", "name": "Carlos Pacheco", "title": "Pastor" },
     { "id": "person-michel-pacheco", "name": "Michel Pacheco" },
     { "id": "person-eduard-lopez", "name": "Eduard Lopez" },
     { "id": "person-milca-abreu", "name": "Milca Abreu" },

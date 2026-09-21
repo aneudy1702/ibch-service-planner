@@ -1,7 +1,6 @@
 import {
   ROLES,
   addAssignment,
-  addPerson,
   exportState,
   getAssignments,
   getPeople,
@@ -9,9 +8,9 @@ import {
   initializeState,
   replaceStateFromImport,
   saveSettings,
-  updatePerson,
   upsertAssignment,
 } from "./storage.js";
+import { addSharedPerson, loadPeople, updateSharedPerson } from "./data.js";
 import {
   STATUS,
   assertCanSelectPerson,
@@ -24,6 +23,7 @@ import {
 } from "./assignment-workflow.js";
 import { selectNextPerson } from "./rotation.js";
 import { buildParticipationSummary, getHomeStats } from "./people.js";
+import { displayPersonName } from "./people-model.js";
 
 const OPENING_READING_ROLE_ID = "opening-reading";
 
@@ -98,7 +98,7 @@ function renderHome() {
     : null;
 
   document.getElementById("next-service-label").textContent = formatDate(stateRefs.currentDate);
-  document.getElementById("assignment-person").textContent = currentPerson?.name || "Sin asignación";
+  document.getElementById("assignment-person").textContent = displayPersonName(currentPerson) || "Sin asignación";
   document.getElementById("assignment-status").textContent = `Estado: ${STATUS_TEXT[currentAssignment?.status || "none"]}`;
 
   const actionState = getHomeActionState(currentAssignment);
@@ -186,20 +186,31 @@ function completeCurrentAssignment() {
   renderAll();
 }
 
-function declineAndReplace(reasonCode, reasonText) {
+async function declineAndReplace(reasonCode, reasonText) {
   const current = getCurrentAssignment();
+  let declinedAssignment;
+
   try {
-    upsertAssignment(declineAssignment(current, { reasonCode, reasonText }));
+    declinedAssignment = declineAssignment(current, { reasonCode, reasonText });
   } catch (error) {
     alert(error.message);
     return;
   }
 
-  if (reasonCode === "pause") {
-    updatePerson(current.personId, { paused: true });
-  } else if (reasonCode === "remove_rotation") {
-    updatePerson(current.personId, { active: false, paused: false });
+  try {
+    if (reasonCode === "pause") {
+      await updateSharedPerson(current.personId, { paused: true });
+    } else if (reasonCode === "remove_rotation") {
+      await updateSharedPerson(current.personId, { active: false, paused: false });
+    }
+  } catch (error) {
+    alert(error.message);
+    if (!error.localSaved) {
+      return;
+    }
   }
+
+  upsertAssignment(declinedAssignment);
 
   const nextPerson = selectNextPerson({
     people: getPeople(),
@@ -225,7 +236,7 @@ function renderPeople() {
     const li = document.createElement("li");
     li.className = "people-item";
     const name = document.createElement("strong");
-    name.textContent = person.name;
+    name.textContent = displayPersonName(person);
 
     const status = document.createElement("div");
     status.className = "muted";
@@ -278,7 +289,7 @@ function renderHistory() {
     dateEl.textContent = formatDate(assignment.serviceDate);
 
     const personEl = document.createElement("div");
-    personEl.textContent = person?.name || "Persona desconocida";
+    personEl.textContent = displayPersonName(person) || "Persona desconocida";
 
     const roleStatus = document.createElement("div");
     roleStatus.className = "muted";
@@ -300,8 +311,9 @@ function renderHistory() {
   buildParticipationSummary(people, assignments, OPENING_READING_ROLE_ID).forEach((item) => {
     const li = document.createElement("li");
     li.className = "history-item";
+    const person = people.find((entry) => entry.id === item.personId);
     const nameEl = document.createElement("strong");
-    nameEl.textContent = item.name;
+    nameEl.textContent = displayPersonName(person) || item.name;
     const completedEl = document.createElement("div");
     completedEl.className = "muted";
     completedEl.textContent = `Veces completadas: ${item.completedCount}`;
@@ -337,18 +349,37 @@ function setupTabs() {
   });
 }
 
+async function refreshPeople({ showFallbackMessage = false } = {}) {
+  const { fromCache, error } = await loadPeople();
+  if (fromCache && showFallbackMessage) {
+    alert(
+      `No se pudo conectar con la base de datos compartida de personas. Se están mostrando datos locales en caché. ${error?.message || ""}`.trim(),
+    );
+  }
+  renderAll();
+}
+
 function setupPeopleHandlers() {
-  document.getElementById("add-person-form").addEventListener("submit", (event) => {
+  document.getElementById("add-person-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const input = document.getElementById("new-person-name");
-    const name = input.value.trim();
+    const nameInput = document.getElementById("new-person-name");
+    const titleInput = document.getElementById("new-person-title");
+    const name = nameInput.value.trim();
+    const title = titleInput.value.trim();
     if (!name) return;
-    addPerson(name);
-    input.value = "";
+
+    try {
+      await addSharedPerson({ name, title: title || null });
+    } catch (error) {
+      alert(error.message);
+    }
+
+    nameInput.value = "";
+    titleInput.value = "";
     renderAll();
   });
 
-  document.getElementById("people-list").addEventListener("click", (event) => {
+  document.getElementById("people-list").addEventListener("click", async (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
     if (target.dataset.action !== "rename") return;
@@ -356,23 +387,38 @@ function setupPeopleHandlers() {
     const people = getPeople();
     const person = people.find((item) => item.id === personId);
     if (!person) return;
+
     const updatedName = prompt("Nuevo nombre:", person.name);
-    if (!updatedName || !updatedName.trim()) return;
-    updatePerson(personId, { name: updatedName.trim() });
+    if (updatedName === null || !updatedName.trim()) return;
+    const updatedTitle = prompt("Título (opcional, deje vacío para quitarlo):", person.title || "");
+    if (updatedTitle === null) return;
+
+    try {
+      await updateSharedPerson(personId, { name: updatedName.trim(), title: updatedTitle.trim() || null });
+    } catch (error) {
+      alert(error.message);
+    }
+
     renderAll();
   });
 
-  document.getElementById("people-list").addEventListener("change", (event) => {
+  document.getElementById("people-list").addEventListener("change", async (event) => {
     const target = event.target;
     if (!(target instanceof HTMLInputElement)) return;
     const personId = target.dataset.id;
     if (!personId) return;
-    if (target.dataset.action === "active") {
-      updatePerson(personId, { active: target.checked });
+
+    try {
+      if (target.dataset.action === "active") {
+        await updateSharedPerson(personId, { active: target.checked });
+      }
+      if (target.dataset.action === "paused") {
+        await updateSharedPerson(personId, { paused: target.checked });
+      }
+    } catch (error) {
+      alert(error.message);
     }
-    if (target.dataset.action === "paused") {
-      updatePerson(personId, { paused: target.checked });
-    }
+
     renderAll();
   });
 }
@@ -469,6 +515,8 @@ async function bootstrap() {
   setupAssignmentActions();
   setupSettings();
   renderAll();
+
+  await refreshPeople({ showFallbackMessage: true });
 
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./service-worker.js").catch(() => undefined);

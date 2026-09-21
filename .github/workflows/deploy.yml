@@ -11,6 +11,8 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_D1_DATABASE_NAME: ibch-service-planner
 
     steps:
       - uses: actions/checkout@v4
@@ -21,6 +23,13 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      - name: Apply D1 migrations
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: d1 migrations apply ${{ env.CLOUDFLARE_D1_DATABASE_NAME }} --remote
 
       - name: Deploy to Cloudflare Pages
         id: cloudflare-pages-deploy
