@@ -75,15 +75,43 @@ python3 -m http.server 8080
 
 Then open `http://localhost:8080`.
 
-## Deploying as a static site
+## Production deployment (Cloudflare Pages)
 
-Deploy this folder directly to:
+Production deploys run automatically from GitHub Actions on every push to `main`.
 
-- GitHub Pages
-- Cloudflare Pages
-- Any static host
+Flow:
 
-The app uses relative asset, manifest, and service worker paths so it can run from a root domain or a repository subpath without extra deployment-specific configuration.
+1. `npm test` runs in CI
+2. If tests pass, GitHub Actions deploys the repository root (`.`) to Cloudflare Pages using Wrangler Direct Upload
+
+Cloudflare Pages configuration:
+
+- Project name: `ibch-service-planner`
+- Required repository secrets:
+  - `CLOUDFLARE_API_TOKEN`
+  - `CLOUDFLARE_ACCOUNT_ID`
+
+Deployment status is visible in the **Actions** tab in the `Deploy` workflow run logs (including the generated `*.pages.dev` URL).
+
+### One-time setup
+
+1. Add GitHub repository secrets:
+   - `CLOUDFLARE_API_TOKEN`
+   - `CLOUDFLARE_ACCOUNT_ID`
+2. Go to GitHub Actions.
+3. Run the **Initialize Cloudflare Pages** workflow once.
+4. Confirm the Pages project is created successfully.
+
+### Normal operation afterward
+
+Every push/merge to `main`:
+
+1. runs tests
+2. deploys automatically to Cloudflare Pages if tests pass
+
+No Cloudflare dashboard action is required for normal deployments after initialization.
+
+After setup, production is available at the Pages domain (for example `https://ibch-service-planner.pages.dev`).
 
 ## localStorage limitations
 
@@ -111,7 +139,7 @@ Run the lightweight test suite locally with:
 npm test
 ```
 
-GitHub Actions also runs `npm test` automatically for pushes to `main` and pull requests targeting `main`.
+GitHub Actions runs `npm test` automatically for pushes to `main` and pull requests targeting `main`, and the production deploy workflow runs `npm test` before deploying.
 
 ## Assignment workflow
 

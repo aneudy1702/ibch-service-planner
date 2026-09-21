@@ -1,0 +1,19 @@
+name: Initialize Cloudflare Pages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  initialize-pages-project:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create Cloudflare Pages project
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages project create ibch-service-planner --production-branch main
