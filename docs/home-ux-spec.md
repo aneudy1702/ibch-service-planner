@@ -4,7 +4,7 @@
 >
 > - This specification applies to the **current single-role Version 1 experience** (Lectura Inicial only).
 > - Implementation **must preserve existing assignment and rotation behavior** — the state machine in `js/assignment-workflow.js`, the fairness/selection logic in `js/rotation.js`, and the stats math in `js/people.js` (`getHomeStats`) are the source of truth and should not be altered by this UX work.
-> - **Shared D1-backed participant data is being handled separately.** This spec assumes the existing localStorage data layer and does not define any sync UI; nothing here should block or pre-empt the D1 work.
+> - **Current data architecture:** the people/participant roster is **shared and D1-backed**; **localStorage remains a cache/fallback for people**. Assignments, history, and settings remain **local-only** for now. This UX spec should **consume the existing data APIs** (`getPeople`, `getHomeStats`, `buildParticipationSummary`, `getAssignments`, `getSettings`, etc.) and **must not redefine or introduce synchronization behavior**. The Home UX work stays **independent of D1 implementation details** — it renders whatever those APIs return and adds no sync UI.
 > - **Multi-role Home is intentionally deferred.** The layout is designed so it can grow into additional service segments (oración, dirección de cánticos, bienvenida, especiales, cierre) later, but those roles are **not** designed or implemented now.
 
 This document is a UX/UI specification only. It is written so that a coding agent can implement the Home screen without guessing. It does not prescribe code.
@@ -148,7 +148,7 @@ Confirmed vocabulary (revised from current "Seleccionada" → "Propuesta" for cl
 
 | Internal status | User-facing label | Icon (text-safe) | Color token (new) | Emphasis | Notes |
 |---|---|---|---|---|---|
-| `selected` | **Propuesta** | ○ (outline dot) | `--status-proposed` = amber `#8a6d3b` text on `#f4ead8` | medium | not yet confirmed with the person |
+| `selected` | **Propuesta** | ○ (outline dot) | `--status-proposed` = dark amber `#7a5a1e` text on `#f4ead8` | medium | not yet confirmed with the person |
 | `confirmed` | **Confirmada** | ● (filled dot) | `--status-confirmed` = `#2f5d84` text on `#dceaf5` | medium | person has agreed |
 | `completed` | **Completada** | ✓ (check) | `--status-completed` = `#2f6b3d` text on `#dcefe0` | high | done; card reads "finished" |
 | `declined` | **Reemplazada** | ↔ | reuse muted `--muted` on `--primary-soft` | low | **does not appear as a Home current status** (decline auto-selects a replacement); shown in Historial only |
@@ -157,7 +157,11 @@ Confirmed vocabulary (revised from current "Seleccionada" → "Propuesta" for cl
 Rules:
 - **Never color-only.** Every badge = icon glyph **+** text label + tint. A monochrome rendering must still be distinguishable via glyph + word.
 - Badge shape: pill (reuse `.status-badge`), padding 0.2rem 0.6rem, font ≥0.85rem.
-- Verify each tint pairing ≥ 4.5:1 contrast (values above are chosen to pass on their tint).
+- **Contrast requirement:** every tint pairing must meet ≥ 4.5:1 for normal text, and the implementer must validate each pair before use.
+  - Proposed: `#7a5a1e` on `#f4ead8` ≈ **5.3:1** (passes). The earlier `#8a6d3b` on `#f4ead8` ≈ 4.06:1 and **failed** — do not use it.
+  - Confirmed: `#2f5d84` on `#dceaf5` ≈ **5.7:1** (passes).
+  - Completed: `#2f6b3d` on `#dcefe0` ≈ **5.3:1** (passes).
+  - If any token is retuned for palette reasons, re-validate to keep ≥ 4.5:1 before shipping.
 - "Rechazada" (current code) is replaced by "Reemplazada" in the Historial status map — less accusatory toward the person.
 
 ---
@@ -346,5 +350,5 @@ Keep it to these rules — no full design system.
 
 - Direct "Asignar" action from the filtered lists (kept read-only to close the info→people gap first).
 - **Multi-role Home** (oración, dirección de cánticos, bienvenida, especiales, cierre): **structure is ready** — the Next Service card becomes one of a vertical stack of per-role cards under a single "PRÓXIMO SERVICIO · {date}" header, each with its own person/status/actions; snapshot becomes per-role or service-level. Not built now.
-- Custom calendar (native picker only), toast/snackbar library (live region + inline text instead), swipe-to-dismiss on the sheet (progressive enhancement), search/filter within sheets, D1 sync UI (data layer handled separately).
+- Custom calendar (native picker only), toast/snackbar library (live region + inline text instead), swipe-to-dismiss on the sheet (progressive enhancement), search/filter within sheets. No sync UI: the D1-backed roster with localStorage cache/fallback already exists at the data layer, and Home simply consumes the existing data APIs.
 - "Deshacer" is specced but flagged as requiring a small state-machine revert; may ship in a follow-up if out of scope for the first pass.
