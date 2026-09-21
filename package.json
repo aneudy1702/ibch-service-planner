@@ -1,0 +1,8 @@
+{
+  "name": "ibch-service-planner",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}

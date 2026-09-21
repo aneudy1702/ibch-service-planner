@@ -43,7 +43,6 @@ Stored model includes:
 - `roles`
 - `services`
 - `assignments`
-- `assignmentHistory` (reserved for future expansion)
 - `settings`
 - `meta`
 
@@ -54,11 +53,17 @@ On first load, people are seeded from `data/people.json`. After that, data is ma
 Selection logic is isolated in `js/rotation.js` and tries to give broad opportunity:
 
 1. Excludes inactive and paused people
-2. Excludes service-specific unavailability declines
+2. Excludes anyone already declined for the same service during the current replacement flow
 3. Prioritizes people who have never completed the role
 4. Prioritizes people who served least recently
 5. Uses randomness only among equal-priority ties
-6. Tracks current cycle participation to avoid repetition before others get opportunity
+
+Reason-specific persistent effects stay outside the ranking logic:
+
+- `unavailable_service`: excludes only for that service
+- `pause`: pauses future selection
+- `remove_rotation`: deactivates the person
+- `shy` / `other`: recorded without auto-pausing or deactivating
 
 ## Running locally
 
@@ -78,6 +83,8 @@ Deploy this folder directly to:
 - Cloudflare Pages
 - Any static host
 
+The app uses relative asset, manifest, and service worker paths so it can run from a root domain or a repository subpath without extra deployment-specific configuration.
+
 ## localStorage limitations
 
 - Data is per browser/device
@@ -89,7 +96,20 @@ Use **Export Backup** regularly and **Import Backup** when restoring/migrating.
 ## Backup and import
 
 - Export creates full app model JSON (for example `ibch-service-planner-backup-YYYY-MM-DD.json`)
-- Import validates basic structure and schema version before replacing current data
+- Import validates schema version, people, assignments, IDs, statuses, service dates, and settings before replacing current data
+
+## Dates
+
+- Service dates are stored as local calendar dates (`YYYY-MM-DD`)
+- Next-Sunday calculation uses local time instead of UTC-based date slicing
+
+## Tests
+
+Run the lightweight rotation tests with:
+
+```bash
+npm test
+```
 
 ## Future extension path
 
