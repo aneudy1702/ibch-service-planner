@@ -19,9 +19,6 @@ jobs:
         with:
           node-version: lts/*
 
-      - name: Install dependencies
-        run: npm ci
-
       - name: Run tests
         run: npm test
 
@@ -32,7 +29,6 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy . --project-name=ibch-service-planner
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Deployment summary
         run: echo "Cloudflare Pages deployment finished. Review the deploy step logs for the generated pages.dev URL."

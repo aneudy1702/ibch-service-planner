@@ -95,15 +95,21 @@ Deployment status is visible in the **Actions** tab in the `Deploy` workflow run
 
 ### One-time setup
 
-Before the deploy workflow can succeed, the Cloudflare Pages project must already exist.
+1. Add GitHub repository secrets:
+   - `CLOUDFLARE_API_TOKEN`
+   - `CLOUDFLARE_ACCOUNT_ID`
+2. Go to GitHub Actions.
+3. Run the **Initialize Cloudflare Pages** workflow once.
+4. Confirm the Pages project is created successfully.
 
-Create it one time in Cloudflare (Dashboard or Wrangler), then future pushes to `main` deploy automatically.
+### Normal operation afterward
 
-Example Wrangler command:
+Every push/merge to `main`:
 
-```bash
-npx wrangler pages project create ibch-service-planner --production-branch main
-```
+1. runs tests
+2. deploys automatically to Cloudflare Pages if tests pass
+
+No Cloudflare dashboard action is required for normal deployments after initialization.
 
 After setup, production is available at the Pages domain (for example `https://ibch-service-planner.pages.dev`).
 
