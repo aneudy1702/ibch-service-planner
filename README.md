@@ -105,11 +105,23 @@ Use **Export Backup** regularly and **Import Backup** when restoring/migrating.
 
 ## Tests
 
-Run the lightweight rotation tests with:
+Run the lightweight test suite locally with:
 
 ```bash
 npm test
 ```
+
+GitHub Actions also runs `npm test` automatically for pushes to `main` and pull requests targeting `main`.
+
+## Assignment workflow
+
+The Home flow for **Lectura Inicial** is intentionally small:
+
+1. No assignment → **Seleccionar persona**
+2. `selected` → **Confirmar** or **Elegir otra persona**
+3. `confirmed` → **Marcar como completado** or **Elegir otra persona**
+
+The standard **Seleccionar persona** action is only available when there is no active assignment for the current service. Replacements happen explicitly through **Elegir otra persona**, which keeps the declined/completed history intact.
 
 ## Future extension path
 
