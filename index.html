@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#7f5539" />
+    <meta name="description" content="IBCH Service Planner for opening scripture reading assignments" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="IBCH Planner" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="icon" type="image/svg+xml" href="icons/icon-192.svg" />
+    <link rel="apple-touch-icon" href="icons/icon-192.svg" />
+    <link rel="stylesheet" href="css/app.css" />
+    <title>IBCH Service Planner</title>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="app-header">
+        <h1>IBCH Service Planner</h1>
+        <p class="subtitle">Version 1 · Lectura Inicial</p>
+      </header>
+
+      <main>
+        <section class="view active" id="view-home" aria-labelledby="home-tab">
+          <article class="card">
+            <p class="eyebrow">Next Service</p>
+            <h2 id="next-service-label">-</h2>
+            <p class="muted">Opening Reading / Lectura Inicial</p>
+            <div class="assignment-block">
+              <p class="label">Assigned person</p>
+              <p id="assignment-person" class="assignment-person">No assignment yet</p>
+              <p id="assignment-status" class="status-badge">status: none</p>
+            </div>
+            <div class="button-row">
+              <button id="btn-select-person" class="btn primary">Select Person</button>
+              <button id="btn-confirm" class="btn">Confirm</button>
+              <button id="btn-complete" class="btn">Mark Completed</button>
+              <button id="btn-decline" class="btn danger">Choose Someone Else</button>
+            </div>
+          </article>
+
+          <article class="card stats-grid" id="home-stats"></article>
+        </section>
+
+        <section class="view" id="view-people" aria-labelledby="people-tab">
+          <article class="card">
+            <h2>People</h2>
+            <form id="add-person-form" class="stack">
+              <label for="new-person-name">Add person</label>
+              <div class="inline-form">
+                <input id="new-person-name" name="new-person-name" type="text" maxlength="80" required />
+                <button type="submit" class="btn primary">Add</button>
+              </div>
+            </form>
+          </article>
+          <article class="card">
+            <ul id="people-list" class="people-list"></ul>
+          </article>
+        </section>
+
+        <section class="view" id="view-history" aria-labelledby="history-tab">
+          <article class="card">
+            <h2>Assignment History</h2>
+            <ul id="history-list" class="history-list"></ul>
+          </article>
+          <article class="card">
+            <h2>Participation</h2>
+            <ul id="participation-list" class="history-list"></ul>
+          </article>
+        </section>
+
+        <section class="view" id="view-settings" aria-labelledby="settings-tab">
+          <article class="card stack">
+            <h2>Settings</h2>
+            <label for="next-service-date">Next service date</label>
+            <input id="next-service-date" type="date" />
+            <button id="btn-save-date" class="btn">Save Date</button>
+          </article>
+          <article class="card stack">
+            <h2>Backup</h2>
+            <button id="btn-export" class="btn">Export Backup</button>
+            <label for="backup-file">Import backup</label>
+            <input id="backup-file" type="file" accept="application/json" />
+            <button id="btn-import" class="btn">Import Backup</button>
+            <p class="muted">Import replaces current local data after validation.</p>
+          </article>
+        </section>
+      </main>
+
+      <nav class="bottom-nav" aria-label="Main navigation">
+        <button id="home-tab" data-tab="home" class="nav-btn active">Home</button>
+        <button id="people-tab" data-tab="people" class="nav-btn">People</button>
+        <button id="history-tab" data-tab="history" class="nav-btn">History</button>
+        <button id="settings-tab" data-tab="settings" class="nav-btn">Settings</button>
+      </nav>
+    </div>
+
+    <dialog id="decline-dialog">
+      <form method="dialog" class="stack">
+        <h3>Why choose someone else?</h3>
+        <label>
+          Reason
+          <select id="decline-reason" required>
+            <option value="unavailable_service">Unavailable for this service</option>
+            <option value="shy">Prefers not to read / shy</option>
+            <option value="pause">Does not want to participate for now</option>
+            <option value="remove_rotation">Remove from rotation</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label>
+          Notes
+          <input id="decline-notes" type="text" maxlength="140" placeholder="Optional" />
+        </label>
+        <div class="button-row">
+          <button value="cancel" class="btn">Cancel</button>
+          <button id="btn-submit-decline" value="submit" class="btn danger">Save & Replace</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>
