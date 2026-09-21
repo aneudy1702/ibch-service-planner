@@ -19,34 +19,19 @@ function mergePeople(updatedPerson) {
   return merged.find((person) => person.id === canonicalUpdated.id) || canonicalUpdated;
 }
 
-function mergeServerWithPending(serverPeople) {
-  const pendingLocal = getCachedPeople().filter((person) => person.syncPending);
-  const byId = new Map(serverPeople.map((person) => [person.id, person]));
-
-  for (const pendingPerson of pendingLocal) {
-    const serverPerson = byId.get(pendingPerson.id);
-    if (!serverPerson) {
-      byId.set(pendingPerson.id, pendingPerson);
-      continue;
-    }
-
-    const pendingUpdatedAt = Date.parse(pendingPerson.updatedAt || "");
-    const serverUpdatedAt = Date.parse(serverPerson.updatedAt || "");
-    if (!Number.isNaN(pendingUpdatedAt) && (Number.isNaN(serverUpdatedAt) || pendingUpdatedAt > serverUpdatedAt)) {
-      byId.set(pendingPerson.id, pendingPerson);
-    }
-  }
-
-  const merged = normalizePeople(Array.from(byId.values()));
-  saveCachedPeople(merged);
-  return merged;
-}
-
 function parseErrorMessage(error) {
   if (error && typeof error.message === "string" && error.message) {
     return error.message;
   }
   return "No se pudo conectar con el servicio compartido.";
+}
+
+function hasSameOrNewerTimestamp(firstPerson, secondPerson) {
+  const firstUpdatedAt = Date.parse(firstPerson.updatedAt || "");
+  const secondUpdatedAt = Date.parse(secondPerson.updatedAt || "");
+  if (Number.isNaN(firstUpdatedAt)) return false;
+  if (Number.isNaN(secondUpdatedAt)) return true;
+  return firstUpdatedAt >= secondUpdatedAt;
 }
 
 async function requestPeople(path = "", options) {
@@ -72,11 +57,79 @@ async function requestPeople(path = "", options) {
   return body;
 }
 
+async function syncPendingPerson(pendingPerson, serverMap) {
+  const personId = canonicalPersonId(pendingPerson.id);
+  const existsInServer = serverMap.has(personId);
+
+  if (existsInServer) {
+    const payload = await requestPeople("", {
+      method: "PATCH",
+      body: JSON.stringify({
+        id: personId,
+        name: pendingPerson.name,
+        title: pendingPerson.title,
+        active: pendingPerson.active,
+        paused: pendingPerson.paused,
+      }),
+    });
+
+    return normalizePeople([{ ...payload.person, syncPending: false }])[0];
+  }
+
+  const createdPayload = await requestPeople("", {
+    method: "POST",
+    body: JSON.stringify({ name: pendingPerson.name, title: pendingPerson.title }),
+  });
+
+  let synced = normalizePeople([{ ...createdPayload.person, syncPending: false }])[0];
+
+  if (synced.active !== pendingPerson.active || synced.paused !== pendingPerson.paused) {
+    const patchPayload = await requestPeople("", {
+      method: "PATCH",
+      body: JSON.stringify({
+        id: synced.id,
+        active: pendingPerson.active,
+        paused: pendingPerson.paused,
+      }),
+    });
+
+    synced = normalizePeople([{ ...patchPayload.person, syncPending: false }])[0];
+  }
+
+  return synced;
+}
+
+async function syncPendingPeople(serverPeople) {
+  const pendingLocalPeople = getCachedPeople().filter((person) => person.syncPending);
+  const serverMap = new Map(normalizePeople(serverPeople).map((person) => [person.id, person]));
+
+  for (const pendingRaw of pendingLocalPeople) {
+    const pendingPerson = normalizePeople([pendingRaw])[0];
+
+    try {
+      const synced = await syncPendingPerson(pendingPerson, serverMap);
+      serverMap.delete(pendingPerson.id);
+      serverMap.set(synced.id, synced);
+    } catch {
+      const personId = canonicalPersonId(pendingPerson.id);
+      const currentServer = serverMap.get(personId);
+
+      if (!currentServer || hasSameOrNewerTimestamp(pendingPerson, currentServer)) {
+        serverMap.set(personId, pendingPerson);
+      }
+    }
+  }
+
+  const merged = normalizePeople(Array.from(serverMap.values()));
+  saveCachedPeople(merged);
+  return merged;
+}
+
 export async function loadPeople() {
   try {
     const payload = await requestPeople();
     const people = normalizePeople(Array.isArray(payload.people) ? payload.people : []);
-    const merged = mergeServerWithPending(people);
+    const merged = await syncPendingPeople(people);
     return { people: merged, fromCache: false };
   } catch (error) {
     return {
@@ -136,6 +189,8 @@ export async function updateSharedPerson(personId, updates) {
     const current = getCachedPeople().find(
       (person) => person.id === personId || person.id === requestedId,
     );
+
+    let savedLocally = false;
     if (current) {
       mergePeople({
         ...current,
@@ -144,12 +199,13 @@ export async function updateSharedPerson(personId, updates) {
         syncPending: true,
         updatedAt: new Date().toISOString(),
       });
+      savedLocally = true;
     }
 
     const syncError = new Error(
       `${parseErrorMessage(error)} Se guardó localmente, pero no se sincronizó con D1. Intente nuevamente cuando vuelva la conexión.`,
     );
-    syncError.localSaved = true;
+    syncError.localSaved = savedLocally;
     throw syncError;
   }
 }

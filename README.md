@@ -105,16 +105,25 @@ Cloudflare configuration secrets:
 
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
-- `CLOUDFLARE_D1_DATABASE_NAME`
+
+Deployment workflow environment constant:
+
+- `CLOUDFLARE_D1_DATABASE_NAME=ibch-service-planner` (defined in `.github/workflows/deploy.yml`)
 
 ## One-time Cloudflare setup
 
-1. Add the three GitHub repository secrets above.
-2. Run **Initialize Cloudflare Pages** workflow once.
-3. Run **Initialize Cloudflare D1** workflow once (creates DB and applies migrations).
-4. In Cloudflare Pages project settings, add a D1 binding:
+1. Add GitHub repository secrets:
+   - `CLOUDFLARE_API_TOKEN`
+   - `CLOUDFLARE_ACCOUNT_ID`
+2. Ensure `CLOUDFLARE_API_TOKEN` includes permissions for **both**:
+   - Cloudflare Pages deployment
+   - Cloudflare D1 database create/migration operations
+   - If your token currently has Pages-only scope, update or replace it to include D1 management permissions.
+3. Run **Initialize Cloudflare Pages** workflow once.
+4. Run **Initialize Cloudflare D1** workflow once (creates DB and applies migrations).
+5. In Cloudflare Pages project settings, add a D1 binding:
    - Binding name: `DB`
-   - Database: your `ibch-service-planner` D1 database
+   - Database: `ibch-service-planner`
 
 After this setup, normal deployments on `main` run tests, apply migrations, and deploy.
 
