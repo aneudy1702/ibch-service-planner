@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192" role="img" aria-label="IBCH">
+  <rect width="192" height="192" rx="36" fill="#7f5539"/>
+  <path d="M96 36l16 32 32 4-24 23 6 33-30-16-30 16 6-33-24-23 32-4z" fill="#f7f1eb"/>
+  <text x="96" y="166" text-anchor="middle" font-size="24" font-family="sans-serif" fill="#f7f1eb">IBCH</text>
+</svg>

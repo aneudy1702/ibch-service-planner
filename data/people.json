@@ -1,0 +1,30 @@
+{
+  "people": [
+    { "id": "person-el-pastor", "name": "El Pastor" },
+    { "id": "person-carlos-pacheco", "name": "Carlos Pacheco" },
+    { "id": "person-michel-pacheco", "name": "Michel Pacheco" },
+    { "id": "person-eduard-lopez", "name": "Eduard Lopez" },
+    { "id": "person-milca-abreu", "name": "Milca Abreu" },
+    { "id": "person-soraya-al-bajuja", "name": "Soraya Al Bajuja" },
+    { "id": "person-alexander-chinchai", "name": "Alexander Chinchai" },
+    { "id": "person-junior-carmelo", "name": "Junior Carmelo" },
+    { "id": "person-carmen", "name": "Carmen" },
+    { "id": "person-cecilia-garcia", "name": "Cecilia Garcia" },
+    { "id": "person-eliana", "name": "Eliana" },
+    { "id": "person-ector", "name": "Ector" },
+    { "id": "person-jennifer", "name": "Jennifer" },
+    { "id": "person-jessica-cadena", "name": "Jessica Cadena" },
+    { "id": "person-jose-chica", "name": "Jose Chica" },
+    { "id": "person-luis-almonte", "name": "Luis Almonte" },
+    { "id": "person-money", "name": "Money" },
+    { "id": "person-margarita", "name": "Margarita" },
+    { "id": "person-maria", "name": "Maria" },
+    { "id": "person-mary", "name": "Mary" },
+    { "id": "person-octavio-cadena", "name": "Octavio Cadena" },
+    { "id": "person-raquel", "name": "Raquel" },
+    { "id": "person-ruben", "name": "Ruben" },
+    { "id": "person-vanjie", "name": "Vanjie" },
+    { "id": "person-yasmari", "name": "Yasmari" },
+    { "id": "person-diego", "name": "Diego" }
+  ]
+}
