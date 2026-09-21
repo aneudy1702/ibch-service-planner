@@ -22,6 +22,13 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Apply D1 migrations
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: d1 migrations apply ${{ secrets.CLOUDFLARE_D1_DATABASE_NAME }} --remote
+
       - name: Deploy to Cloudflare Pages
         id: cloudflare-pages-deploy
         uses: cloudflare/wrangler-action@v3

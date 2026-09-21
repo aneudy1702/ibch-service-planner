@@ -1,9 +1,11 @@
-const CACHE_NAME = "ibch-service-planner-v1";
+const CACHE_NAME = "ibch-service-planner-v2";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./css/app.css",
   "./js/app.js",
+  "./js/data.js",
+  "./js/people-model.js",
   "./js/storage.js",
   "./js/rotation.js",
   "./js/people.js",

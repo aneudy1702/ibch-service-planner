@@ -1,3 +1,5 @@
+import { normalizePeople, normalizeTitle, slugify } from "./people-model.js";
+
 const STORAGE_KEY = "ibch-service-planner.v1";
 export const SCHEMA_VERSION = 1;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -42,14 +44,8 @@ function isValidIsoDate(value) {
   return typeof value === "string" && parseLocalDateString(value) instanceof Date;
 }
 
-function slugify(value) {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[^a-z0-9\s-]/g, "")
-    .trim()
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-");
+function normalizePersonId(personId) {
+  return personId === "person-el-pastor" ? "person-carlos-pacheco" : personId;
 }
 
 function nextSundayIsoDate() {
@@ -61,22 +57,11 @@ function nextSundayIsoDate() {
   return localDateString(date);
 }
 
-function normalizeSeedPeople(seedPeople = []) {
-  const createdAt = nowIso();
-  return seedPeople.map((person, index) => ({
-    id: person.id || `person-${slugify(person.name || `seed-${index + 1}`)}`,
-    name: person.name || `Person ${index + 1}`,
-    active: person.active ?? true,
-    paused: person.paused ?? false,
-    createdAt: person.createdAt || createdAt,
-  }));
-}
-
 function defaultState(seedPeople = []) {
   const timestamp = nowIso();
   return {
     version: SCHEMA_VERSION,
-    people: normalizeSeedPeople(seedPeople),
+    people: normalizePeople(seedPeople),
     roles: ROLES,
     services: [],
     assignments: [],
@@ -94,10 +79,13 @@ function normalizeState(candidate) {
   const timestamp = nowIso();
   return {
     version: SCHEMA_VERSION,
-    people: candidate.people.map((person) => ({ ...person })),
+    people: normalizePeople(candidate.people),
     roles: ROLES,
     services: Array.isArray(candidate.services) ? [...candidate.services] : [],
-    assignments: candidate.assignments.map((assignment) => ({ ...assignment })),
+    assignments: candidate.assignments.map((assignment) => ({
+      ...assignment,
+      personId: normalizePersonId(assignment.personId),
+    })),
     settings: {
       nextServiceDate: candidate.settings.nextServiceDate,
     },
@@ -143,14 +131,22 @@ export function initializeState(seedPeople = []) {
   return saveState(freshState);
 }
 
-export function getPeople() {
+export function getCachedPeople() {
   return getState()?.people || [];
 }
 
-export function savePeople(people) {
+export function getPeople() {
+  return getCachedPeople();
+}
+
+export function saveCachedPeople(people) {
   const state = getState();
   if (!state) return null;
-  return saveState({ ...state, people });
+  return saveState({ ...state, people: normalizePeople(people) });
+}
+
+export function savePeople(people) {
+  return saveCachedPeople(people);
 }
 
 export function getAssignments() {
@@ -173,15 +169,17 @@ export function saveSettings(settings) {
   return saveState({ ...state, settings: { ...state.settings, ...settings } });
 }
 
-export function addPerson(name) {
+export function addPerson(name, title = null) {
   const state = getState();
   if (!state) return null;
   const person = {
     id: `person-${slugify(name)}-${Math.random().toString(36).slice(2, 7)}`,
     name,
+    title: normalizeTitle(title),
     active: true,
     paused: false,
     createdAt: nowIso(),
+    updatedAt: nowIso(),
   };
   state.people.push(person);
   saveState(state);
@@ -196,6 +194,8 @@ export function updatePerson(personId, updates) {
       ? {
           ...person,
           ...updates,
+          title: updates.title === undefined ? person.title : normalizeTitle(updates.title),
+          updatedAt: nowIso(),
         }
       : person,
   );
@@ -243,20 +243,21 @@ export function isValidImportedState(candidate) {
   if (!isValidIsoDate(candidate.settings.nextServiceDate)) return false;
 
   const personIds = new Set();
-  for (const person of candidate.people) {
-    if (!person || typeof person !== "object") return false;
-    if (typeof person.id !== "string" || !person.id.trim()) return false;
-    if (personIds.has(person.id)) return false;
-    if (typeof person.name !== "string" || !person.name.trim()) return false;
-    if (typeof person.active !== "boolean" || typeof person.paused !== "boolean") return false;
-    if (typeof person.createdAt !== "string" || !person.createdAt) return false;
-    personIds.add(person.id);
+  for (const rawPerson of normalizePeople(candidate.people)) {
+    if (!rawPerson || typeof rawPerson !== "object") return false;
+    if (typeof rawPerson.id !== "string" || !rawPerson.id.trim()) return false;
+    if (personIds.has(rawPerson.id)) return false;
+    if (typeof rawPerson.name !== "string" || !rawPerson.name.trim()) return false;
+    if (typeof rawPerson.active !== "boolean" || typeof rawPerson.paused !== "boolean") return false;
+    if (typeof rawPerson.createdAt !== "string" || !rawPerson.createdAt) return false;
+    if (rawPerson.title != null && typeof rawPerson.title !== "string") return false;
+    personIds.add(rawPerson.id);
   }
 
   for (const assignment of candidate.assignments) {
     if (!assignment || typeof assignment !== "object") return false;
     if (typeof assignment.id !== "string" || !assignment.id.trim()) return false;
-    if (!personIds.has(assignment.personId)) return false;
+    if (!personIds.has(normalizePersonId(assignment.personId))) return false;
     if (assignment.roleId !== "opening-reading") return false;
     if (!VALID_ASSIGNMENT_STATUSES.has(assignment.status)) return false;
     if (!isValidIsoDate(assignment.serviceDate)) return false;

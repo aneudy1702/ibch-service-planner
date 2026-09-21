@@ -1,0 +1,31 @@
+name: Initialize Cloudflare D1
+
+on:
+  workflow_dispatch:
+    inputs:
+      database_name:
+        description: "Cloudflare D1 database name"
+        required: true
+        default: "ibch-service-planner"
+
+permissions:
+  contents: read
+
+jobs:
+  initialize-d1:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create Cloudflare D1 database
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: d1 create ${{ github.event.inputs.database_name }}
+
+      - name: Apply D1 migrations
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: d1 migrations apply ${{ github.event.inputs.database_name }} --remote
