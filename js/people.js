@@ -24,11 +24,11 @@ export function getHomeStats(people, assignments, roleId) {
       .map((item) => item.personId),
   );
 
-  const activePeople = people.filter((person) => person.active);
+  const eligiblePeople = people.filter((person) => person.active && !person.paused);
+  const participated = eligiblePeople.filter((person) => completedIds.has(person.id)).length;
   return {
-    totalPeople: people.length,
-    activePeople: activePeople.length,
-    participated: completedIds.size,
-    waiting: activePeople.filter((person) => !completedIds.has(person.id)).length,
+    rotationTotal: eligiblePeople.length,
+    participated,
+    waiting: eligiblePeople.length - participated,
   };
 }

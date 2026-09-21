@@ -1,16 +1,16 @@
 const CACHE_NAME = "ibch-service-planner-v1";
 const APP_SHELL = [
-  "/",
-  "/index.html",
-  "/css/app.css",
-  "/js/app.js",
-  "/js/storage.js",
-  "/js/rotation.js",
-  "/js/people.js",
-  "/data/people.json",
-  "/manifest.json",
-  "/icons/icon-192.svg",
-  "/icons/icon-512.svg",
+  "./",
+  "./index.html",
+  "./css/app.css",
+  "./js/app.js",
+  "./js/storage.js",
+  "./js/rotation.js",
+  "./js/people.js",
+  "./data/people.json",
+  "./manifest.json",
+  "./icons/icon-192.svg",
+  "./icons/icon-512.svg",
 ];
 
 self.addEventListener("install", (event) => {

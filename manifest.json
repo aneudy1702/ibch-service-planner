@@ -1,12 +1,13 @@
 {
   "name": "IBCH Service Planner",
   "short_name": "IBCH Planner",
-  "description": "Mobile-first planner for church service role assignments.",
-  "start_url": "/",
+  "description": "Planificador móvil para asignar la Lectura Inicial.",
+  "start_url": ".",
+  "scope": ".",
   "display": "standalone",
   "background_color": "#f9f5f1",
   "theme_color": "#7f5539",
-  "lang": "en",
+  "lang": "es",
   "icons": [
     {
       "src": "icons/icon-192.svg",
