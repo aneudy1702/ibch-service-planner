@@ -196,15 +196,40 @@ function renderPeople() {
   people.forEach((person) => {
     const li = document.createElement("li");
     li.className = "people-item";
-    li.innerHTML = `
-      <strong>${person.name}</strong>
-      <div class="muted">${person.active ? "Active" : "Inactive"} · ${person.paused ? "Paused" : "Available"}</div>
-      <div class="person-actions">
-        <button class="btn" data-action="rename" data-id="${person.id}">Edit</button>
-        <label><input type="checkbox" data-action="active" data-id="${person.id}" ${person.active ? "checked" : ""}/> Active</label>
-        <label><input type="checkbox" data-action="paused" data-id="${person.id}" ${person.paused ? "checked" : ""}/> Paused</label>
-      </div>
-    `;
+    const name = document.createElement("strong");
+    name.textContent = person.name;
+
+    const status = document.createElement("div");
+    status.className = "muted";
+    status.textContent = `${person.active ? "Active" : "Inactive"} · ${person.paused ? "Paused" : "Available"}`;
+
+    const actions = document.createElement("div");
+    actions.className = "person-actions";
+
+    const renameBtn = document.createElement("button");
+    renameBtn.className = "btn";
+    renameBtn.dataset.action = "rename";
+    renameBtn.dataset.id = person.id;
+    renameBtn.textContent = "Edit";
+
+    const activeLabel = document.createElement("label");
+    const activeInput = document.createElement("input");
+    activeInput.type = "checkbox";
+    activeInput.dataset.action = "active";
+    activeInput.dataset.id = person.id;
+    activeInput.checked = person.active;
+    activeLabel.append(activeInput, " Active");
+
+    const pausedLabel = document.createElement("label");
+    const pausedInput = document.createElement("input");
+    pausedInput.type = "checkbox";
+    pausedInput.dataset.action = "paused";
+    pausedInput.dataset.id = person.id;
+    pausedInput.checked = person.paused;
+    pausedLabel.append(pausedInput, " Paused");
+
+    actions.append(renameBtn, activeLabel, pausedLabel);
+    li.append(name, status, actions);
     list.appendChild(li);
   });
 }
@@ -221,12 +246,25 @@ function renderHistory() {
     const role = ROLES.find((item) => item.id === assignment.roleId);
     const li = document.createElement("li");
     li.className = "history-item";
-    li.innerHTML = `
-      <strong>${assignment.serviceDate}</strong>
-      <div>${person?.name || "Unknown person"}</div>
-      <div class="muted">${role?.displayNameEs || assignment.roleId} · ${assignment.status}</div>
-      ${assignment.reasonCode ? `<div class="muted">Reason: ${REASON_TEXT[assignment.reasonCode]}${assignment.reasonText ? ` (${assignment.reasonText})` : ""}</div>` : ""}
-    `;
+    const dateEl = document.createElement("strong");
+    dateEl.textContent = assignment.serviceDate;
+
+    const personEl = document.createElement("div");
+    personEl.textContent = person?.name || "Unknown person";
+
+    const roleStatus = document.createElement("div");
+    roleStatus.className = "muted";
+    roleStatus.textContent = `${role?.displayNameEs || assignment.roleId} · ${assignment.status}`;
+
+    li.append(dateEl, personEl, roleStatus);
+
+    if (assignment.reasonCode) {
+      const reasonEl = document.createElement("div");
+      reasonEl.className = "muted";
+      const reasonLabel = REASON_TEXT[assignment.reasonCode] || assignment.reasonCode;
+      reasonEl.textContent = `Reason: ${reasonLabel}${assignment.reasonText ? ` (${assignment.reasonText})` : ""}`;
+      li.append(reasonEl);
+    }
     historyList.appendChild(li);
   });
 
@@ -234,11 +272,15 @@ function renderHistory() {
   buildParticipationSummary(people, assignments, OPENING_READING_ROLE_ID).forEach((item) => {
     const li = document.createElement("li");
     li.className = "history-item";
-    li.innerHTML = `
-      <strong>${item.name}</strong>
-      <div class="muted">Completed: ${item.completedCount}</div>
-      <div class="muted">Last served: ${item.lastServiceDate || "Never"}</div>
-    `;
+    const nameEl = document.createElement("strong");
+    nameEl.textContent = item.name;
+    const completedEl = document.createElement("div");
+    completedEl.className = "muted";
+    completedEl.textContent = `Completed: ${item.completedCount}`;
+    const lastServedEl = document.createElement("div");
+    lastServedEl.className = "muted";
+    lastServedEl.textContent = `Last served: ${item.lastServiceDate || "Never"}`;
+    li.append(nameEl, completedEl, lastServedEl);
     participationList.appendChild(li);
   });
 }
