@@ -5,6 +5,7 @@ const JSON_HEADERS = {
 const CANONICAL_PASTOR_ID = "person-carlos-pacheco";
 const CANONICAL_PASTOR_NAME = "Carlos Pacheco";
 const CANONICAL_PASTOR_TITLE = "Pastor";
+const PERSON_ID_RE = /^person-[a-z0-9-]+$/;
 
 class ApiError extends Error {
   constructor(message, status = 400) {
@@ -86,6 +87,13 @@ function validateName(value) {
   return value.trim();
 }
 
+function validatePersonId(value) {
+  if (typeof value !== "string" || !PERSON_ID_RE.test(value.trim())) {
+    throw new ApiError("El id de la persona no es válido.", 400);
+  }
+  return value.trim();
+}
+
 async function listPeople(db) {
   const result = await db
     .prepare(
@@ -95,6 +103,16 @@ async function listPeople(db) {
     )
     .all();
   return (result.results || []).map(toPerson);
+}
+
+async function getPersonById(db, personId) {
+  return db
+    .prepare(
+      `SELECT id, name, title, active, paused, created_at AS createdAt, updated_at AS updatedAt
+       FROM people WHERE id = ?`,
+    )
+    .bind(personId)
+    .first();
 }
 
 async function buildUniquePersonId(db, baseId) {
@@ -127,6 +145,7 @@ export async function onRequestPost(context) {
     const name = validateName(body.name);
     const title = cleanTitle(body.title);
     const timestamp = nowIso();
+    const requestedId = body.id == null ? null : validatePersonId(body.id);
 
     if (isCanonicalPastorName(name)) {
       await db
@@ -149,19 +168,21 @@ export async function onRequestPost(context) {
         )
         .run();
 
-      const canonicalRow = await db
-        .prepare(
-          `SELECT id, name, title, active, paused, created_at AS createdAt, updated_at AS updatedAt
-           FROM people WHERE id = ?`,
-        )
-        .bind(CANONICAL_PASTOR_ID)
-        .first();
+      const canonicalRow = await getPersonById(db, CANONICAL_PASTOR_ID);
 
       return json({ person: toPerson(canonicalRow) }, { status: 201 });
     }
 
-    const baseId = slugify(name) || "persona";
-    const personId = await buildUniquePersonId(db, baseId);
+    let personId = requestedId;
+    if (personId) {
+      const existing = await getPersonById(db, personId);
+      if (existing) {
+        return json({ person: toPerson(existing) }, { status: 200 });
+      }
+    } else {
+      const baseId = slugify(name) || "persona";
+      personId = await buildUniquePersonId(db, baseId);
+    }
 
     await db
       .prepare(
@@ -171,13 +192,7 @@ export async function onRequestPost(context) {
       .bind(personId, name, title, timestamp, timestamp)
       .run();
 
-    const row = await db
-      .prepare(
-        `SELECT id, name, title, active, paused, created_at AS createdAt, updated_at AS updatedAt
-         FROM people WHERE id = ?`,
-      )
-      .bind(personId)
-      .first();
+    const row = await getPersonById(db, personId);
 
     return json({ person: toPerson(row) }, { status: 201 });
   } catch (error) {

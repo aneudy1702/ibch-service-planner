@@ -66,6 +66,7 @@ test("next successful load retries pending add and clears syncPending", async ()
   storage.initializeState([]);
 
   let step = 0;
+  let pendingId = null;
   globalThis.fetch = async () => {
     step += 1;
     if (step === 1) {
@@ -77,7 +78,7 @@ test("next successful load retries pending add and clears syncPending", async ()
     if (step === 3) {
       return createResponse(true, {
         person: {
-          id: "person-ana",
+          id: pendingId,
           name: "Ana",
           title: null,
           active: true,
@@ -92,15 +93,87 @@ test("next successful load retries pending add and clears syncPending", async ()
 
   try {
     await assert.rejects(() => data.addSharedPerson({ name: "Ana", title: null }));
+    pendingId = storage.getCachedPeople()[0].id;
 
     const loaded = await data.loadPeople();
-    const person = loaded.people.find((item) => item.id === "person-ana");
+    const person = loaded.people.find((item) => item.id === pendingId);
 
     assert.equal(loaded.fromCache, false);
     assert.ok(person);
     assert.equal(person.syncPending, false);
 
-    const cached = storage.getCachedPeople().find((item) => item.id === "person-ana");
+    const cached = storage.getCachedPeople().find((item) => item.id === pendingId);
+    assert.ok(cached);
+    assert.equal(cached.syncPending, false);
+  } finally {
+    globalThis.localStorage = originalLocalStorage;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("offline add keeps ID stable through sync and preserves assignment references", async () => {
+  const originalLocalStorage = globalThis.localStorage;
+  const originalFetch = globalThis.fetch;
+
+  globalThis.localStorage = createLocalStorageMock();
+  const { storage, data } = await loadModules();
+  storage.initializeState([]);
+
+  let step = 0;
+  let pendingId = null;
+  globalThis.fetch = async (url, options) => {
+    step += 1;
+    if (step === 1) {
+      return createResponse(false, { error: "offline" });
+    }
+    if (step === 2) {
+      return createResponse(true, { people: [] });
+    }
+    if (step === 3) {
+      const payload = JSON.parse(options.body);
+      assert.equal(payload.id, pendingId);
+      return createResponse(true, {
+        person: {
+          id: pendingId,
+          name: "Ana",
+          title: null,
+          active: true,
+          paused: false,
+          createdAt: "2026-09-21T00:00:00.000Z",
+          updatedAt: "2026-09-21T00:00:00.000Z",
+        },
+      });
+    }
+    throw new Error("unexpected request");
+  };
+
+  try {
+    await assert.rejects(() => data.addSharedPerson({ name: "Ana", title: null }));
+    pendingId = storage.getCachedPeople()[0].id;
+    assert.match(pendingId, /^person-ana-[a-z0-9]+$/);
+
+    storage.addAssignment({
+      id: "assignment-offline",
+      personId: pendingId,
+      roleId: "opening-reading",
+      serviceDate: "2026-09-28",
+      status: "selected",
+      createdAt: "2026-09-28T00:00:00.000Z",
+      updatedAt: "2026-09-28T00:00:00.000Z",
+    });
+
+    const loaded = await data.loadPeople();
+    const person = loaded.people.find((item) => item.id === pendingId);
+    const assignment = storage.getAssignments().find((item) => item.id === "assignment-offline");
+    const resolved = loaded.people.find((item) => item.id === assignment.personId);
+
+    assert.equal(loaded.fromCache, false);
+    assert.ok(person);
+    assert.equal(person.syncPending, false);
+    assert.equal(assignment.personId, pendingId);
+    assert.ok(resolved);
+
+    const cached = storage.getCachedPeople().find((item) => item.id === pendingId);
     assert.ok(cached);
     assert.equal(cached.syncPending, false);
   } finally {

@@ -78,7 +78,11 @@ async function syncPendingPerson(pendingPerson, serverMap) {
 
   const createdPayload = await requestPeople("", {
     method: "POST",
-    body: JSON.stringify({ name: pendingPerson.name, title: pendingPerson.title }),
+    body: JSON.stringify({
+      id: pendingPerson.id,
+      name: pendingPerson.name,
+      title: pendingPerson.title,
+    }),
   });
 
   let synced = normalizePeople([{ ...createdPayload.person, syncPending: false }])[0];
