@@ -35,13 +35,21 @@ function hasSameOrNewerTimestamp(firstPerson, secondPerson) {
 }
 
 async function requestPeople(path = "", options) {
-  const response = await fetch(`${PEOPLE_API_URL}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(options?.headers || {}),
-    },
-    ...options,
-  });
+  let response;
+  try {
+    response = await fetch(`${PEOPLE_API_URL}${path}`, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(options?.headers || {}),
+      },
+      ...options,
+    });
+  } catch (cause) {
+    const error = new Error("No se pudo conectar con el servicio compartido.");
+    error.cause = cause;
+    error.kind = "network";
+    throw error;
+  }
 
   let body = {};
   try {
@@ -51,7 +59,11 @@ async function requestPeople(path = "", options) {
   }
 
   if (!response.ok) {
-    throw new Error(body.error || "No se pudo completar la operación de personas.");
+    const error = new Error(body.error || "No se pudo completar la operación de personas.");
+    error.kind = "http";
+    error.status = response.status;
+    error.apiError = typeof body.error === "string" ? body.error : null;
+    throw error;
   }
 
   return body;
@@ -136,6 +148,11 @@ export async function loadPeople() {
     const merged = await syncPendingPeople(people);
     return { people: merged, fromCache: false };
   } catch (error) {
+    console.error("People API unavailable; using cached roster.", {
+      kind: error.kind || "unknown",
+      status: error.status || null,
+      apiError: error.apiError || error.message,
+    });
     return {
       people: getCachedPeople(),
       fromCache: true,

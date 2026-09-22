@@ -34,6 +34,46 @@ async function loadModules() {
   return { storage, data };
 }
 
+test("loadPeople keeps cached people when the API is unavailable", async () => {
+  const originalLocalStorage = globalThis.localStorage;
+  const originalFetch = globalThis.fetch;
+  const originalConsoleError = console.error;
+  const diagnostics = [];
+
+  globalThis.localStorage = createLocalStorageMock();
+  const { storage, data } = await loadModules();
+  storage.initializeState([]);
+  storage.saveCachedPeople([
+    {
+      id: "person-cached",
+      name: "Persona en caché",
+      title: null,
+      active: true,
+      paused: false,
+      createdAt: "2026-09-20T00:00:00.000Z",
+      updatedAt: "2026-09-20T00:00:00.000Z",
+    },
+  ]);
+  globalThis.fetch = async () => {
+    throw new TypeError("network unavailable");
+  };
+  console.error = (...args) => diagnostics.push(args);
+
+  try {
+    const loaded = await data.loadPeople();
+    assert.equal(loaded.fromCache, true);
+    assert.equal(loaded.people[0].name, "Persona en caché");
+    assert.equal(loaded.error.kind, "network");
+    assert.equal(diagnostics.length, 1);
+    assert.equal(diagnostics[0][1].kind, "network");
+    assert.equal(diagnostics[0][1].status, null);
+  } finally {
+    console.error = originalConsoleError;
+    globalThis.localStorage = originalLocalStorage;
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("failed add is stored locally with syncPending=true", async () => {
   const originalLocalStorage = globalThis.localStorage;
   const originalFetch = globalThis.fetch;

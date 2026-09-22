@@ -83,13 +83,29 @@ Reason-specific persistent effects stay outside the ranking logic:
 
 ## Running locally
 
-Any static server works. Example:
+Install dependencies, then start the app through the Cloudflare Pages runtime:
 
 ```bash
-python3 -m http.server 8080
+npm install
+npm run dev
 ```
 
-Then open `http://localhost:8080`.
+`npm run dev` applies migrations to a local D1 database and starts Wrangler Pages development. Open the URL Wrangler prints (normally `http://localhost:8788`). The local D1 data is persisted under `.wrangler/state` and is separate from production; local commands do not mutate the production database unless `--remote` is explicitly supplied.
+
+To reapply pending local migrations without starting the app:
+
+```bash
+npm run db:migrate:local
+```
+
+To reset and reseed local D1, stop Wrangler, remove its local state, and rerun the migration:
+
+```bash
+rm -rf .wrangler/state
+npm run db:migrate:local
+```
+
+The migration creates the `people` table and applies the repository's idempotent seed data.
 
 ## Production deployment (Cloudflare Pages + D1)
 
@@ -98,8 +114,10 @@ Production deploys run automatically from GitHub Actions on every push to `main`
 Flow:
 
 1. `npm test` runs in CI
-2. D1 migrations are applied remotely
-3. GitHub Actions deploys the repository root (`.`) to Cloudflare Pages using Wrangler Direct Upload
+2. The configured D1 database name and UUID are verified
+3. D1 migrations are applied remotely
+4. GitHub Actions deploys the repository root (`.`) to Cloudflare Pages using the checked-in Wrangler configuration, including the `DB` binding
+5. CI requests the deployment-specific `/api/people` endpoint and fails unless it returns successful JSON with a `people` array
 
 Cloudflare configuration secrets:
 
@@ -120,10 +138,8 @@ Deployment workflow environment constant:
    - Cloudflare D1 database create/migration operations
    - If your token currently has Pages-only scope, update or replace it to include D1 management permissions.
 3. Run **Initialize Cloudflare Pages** workflow once.
-4. Optional: run **Initialize Cloudflare D1** workflow once if you want to provision the database manually ahead of the first deploy. The normal `Deploy` workflow now creates the named D1 database automatically if it is missing, then applies migrations.
-5. In Cloudflare Pages project settings, add a D1 binding:
-   - Binding name: `DB`
-   - Database: `ibch-service-planner`
+4. The current production database is already provisioned. If it is ever recreated with **Initialize Cloudflare D1**, update `database_id` in `wrangler.toml` to the new UUID before deploying. The deploy workflow intentionally fails on a name/UUID mismatch instead of binding or migrating the wrong database.
+5. The repository's `wrangler.toml` declaratively binds `DB` to the `ibch-service-planner` database. A manual dashboard binding is not required for deployments made by the repository workflow.
 
 After this setup, normal deployments on `main` run tests, apply migrations, and deploy.
 

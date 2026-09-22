@@ -1,4 +1,10 @@
+name = "ibch-service-planner"
+pages_build_output_dir = "."
+compatibility_date = "2026-09-22"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "ibch-service-planner"
+database_id = "9ec96597-11d5-4569-b509-cc9bbf5f0e84"
+preview_database_id = "DB"
 migrations_dir = "migrations"
