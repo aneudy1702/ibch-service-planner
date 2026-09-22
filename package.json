@@ -3,6 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "npm run db:migrate:local && wrangler pages dev .",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "healthcheck": "node scripts/check-people-api.js",
     "test": "node --test"
+  },
+  "devDependencies": {
+    "wrangler": "4.136.1"
   }
 }
