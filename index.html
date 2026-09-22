@@ -20,6 +20,7 @@
         <h1>Planificador IBCH</h1>
         <p class="subtitle">Lectura Inicial</p>
       </header>
+      <p id="app-live-region" class="visually-hidden" aria-live="polite" aria-atomic="true"></p>
 
       <main>
         <section class="view active" id="view-home">
@@ -46,7 +47,6 @@
               <button id="btn-decline" class="btn quiet">Elegir otra persona</button>
               <button id="btn-go-people" class="btn primary">Ir a Personas</button>
             </div>
-            <p id="home-live-region" class="visually-hidden" aria-live="polite" aria-atomic="true"></p>
           </article>
 
           <article class="card rotation-card">
@@ -57,8 +57,8 @@
         </section>
 
         <section class="view" id="view-people">
-          <article class="card">
-            <h2>Personas</h2>
+          <article class="card people-header-card">
+            <h2 id="people-heading">Personas · 0 en rotación</h2>
             <form id="add-person-form" class="stack">
               <label for="new-person-name">Agregar persona</label>
               <div class="inline-form">
@@ -68,9 +68,11 @@
               <label for="new-person-title">Título (opcional)</label>
               <input id="new-person-title" name="new-person-title" type="text" maxlength="80" placeholder="Ej.: Pastor" />
             </form>
+            <p class="muted shared-roster-note">Los cambios se comparten con el equipo.</p>
           </article>
           <article class="card">
             <ul id="people-list" class="people-list"></ul>
+            <p id="people-empty" class="muted empty-list" hidden>Aún no hay personas en la lista. Agrega la primera para comenzar.</p>
           </article>
         </section>
 
@@ -146,6 +148,38 @@
           <p id="sheet-empty" class="muted sheet-empty" hidden></p>
         </div>
       </div>
+    </dialog>
+
+    <dialog id="edit-person-dialog" aria-modal="true" aria-labelledby="edit-person-title">
+      <form id="edit-person-form" class="stack">
+        <h2 id="edit-person-title">Editar persona</h2>
+        <input id="edit-person-id" type="hidden" />
+        <label for="edit-person-name">Nombre</label>
+        <input id="edit-person-name" type="text" maxlength="80" required />
+        <label for="edit-person-title-input">Título (opcional)</label>
+        <input id="edit-person-title-input" type="text" maxlength="80" />
+        <label for="edit-person-membership">Estado en la lista</label>
+        <select id="edit-person-membership">
+          <option value="rotation">En rotación</option>
+          <option value="paused">En pausa</option>
+          <option value="out">Fuera de rotación</option>
+        </select>
+        <div class="button-row dialog-actions">
+          <button id="btn-cancel-edit-person" type="button" class="btn">Cancelar</button>
+          <button type="submit" class="btn primary">Guardar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="duplicate-person-dialog" aria-modal="true" aria-labelledby="duplicate-person-title">
+      <form method="dialog" class="stack">
+        <h2 id="duplicate-person-title">Nombre duplicado</h2>
+        <p>Ya existe una persona con ese nombre.<br />¿Agregar de todos modos?</p>
+        <div class="button-row dialog-actions">
+          <button value="cancel" class="btn">Cancelar</button>
+          <button value="confirm" class="btn primary">Agregar de todos modos</button>
+        </div>
+      </form>
     </dialog>
 
     <script type="module" src="./js/app.js"></script>
