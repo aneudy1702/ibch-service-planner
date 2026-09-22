@@ -10,7 +10,7 @@
 
 This document is a UX/UI specification only. It does not prescribe code.
 
-Design tokens (in `css/app.css`): `--primary #7f5539`, `--primary-soft #ede0d4`, `--danger #9d2a2a`, `--border #dfd3ca`, `--muted #6f625b`, `--text #2f241f`, `--bg #f9f5f1`, `--card #fff`. Status tokens already defined: `--status-confirmed`/`--status-confirmed-bg`, `--status-completed`/`--status-completed-bg`. A **proposed/reemplazada** tint is not yet tokenized — add and contrast-validate one (≥ 4.5:1) if badges are introduced in Historial (see §2).
+Design tokens (in `css/app.css`): `--primary #7f5539`, `--primary-soft #ede0d4`, `--danger #9d2a2a`, `--border #dfd3ca`, `--muted #6f625b`, `--text #2f241f`, `--bg #f9f5f1`, `--card #fff`. Status tokens already defined (with matching `.status-*` badge rules): `--status-proposed`/`--status-proposed-bg` (`#7a5a1e` on `#f4ead8`), `--status-confirmed`/`--status-confirmed-bg`, `--status-completed`/`--status-completed-bg`. Only **Reemplazada** has no dedicated token yet — add and contrast-validate one (≥ 4.5:1) if badges are introduced in Historial (see §2).
 
 ---
 
@@ -108,7 +108,7 @@ Glyph + text + tint; never color-only. Validate any new tint ≥ 4.5:1.
 > Note: "Rechazada→Reemplazada" and the two empty states were requested in the previous draft as fixes; **they are already implemented on `main`** and are listed here only as behavior to **preserve**, not as defects.
 
 ### 2.3 Recommended target behavior
-1. **Render status as a badge** (glyph + text + tint), reusing the Home badge style and the existing `--status-confirmed`/`--status-completed` tokens; **add and contrast-validate** a proposed and a reemplazada tint (no `--status-proposed`/reemplazada token exists yet). Keep the "Motivo" line for replaced items. **Preserve the Reemplazada wording.**
+1. **Render status as a badge** (glyph + text + tint) by reusing the existing Home badge treatments and their `.status-proposed` / `.status-confirmed` / `.status-completed` classes and tokens (`--status-proposed`, `--status-confirmed`, `--status-completed`). Only **Reemplazada** lacks a treatment — introduce and contrast-validate one (≥ 4.5:1) if it needs distinct styling; otherwise it can fall back to the neutral badge base. Keep the "Motivo" line for replaced items. **Preserve the Reemplazada wording.**
 2. **Group the log by service date** with a short-format header (e.g., "dom 28 sep 2025") and that date's assignment(s) beneath it — reads as "what happened each Sunday" and compresses repeated dates.
 3. **Add lightweight client-side filters** (person, status). Leave a **reserved slot for a future role filter** (do not build it).
 4. **Caption Participación** to reconcile it with Home: "Resumen de quienes han participado, incluidas personas ahora en pausa o fuera de rotación." Optionally add a "Solo en rotación" toggle mirroring Home eligibility. **Keep the existing `completedCount > 0` filter and empty state.**
@@ -227,7 +227,7 @@ Items marked *(preserve)* are already satisfied on `main` and must not regress.
 **Historial**
 9. Declined assignments render as **Reemplazada** (never "Rechazada"). *(preserve)*
 10. Empty states for no assignments and no completed participation are present. *(preserve)*
-11. Statuses render as badges (glyph + text + tint) consistent with Home; any new proposed/reemplazada tint is contrast-validated ≥ 4.5:1.
+11. Statuses render as badges (glyph + text + tint) consistent with Home, reusing the existing Propuesta/Confirmada/Completada treatments; any new **Reemplazada** tint is contrast-validated ≥ 4.5:1.
 12. The log is grouped by service date with a short-format header.
 13. Person and status filters work client-side; a role-filter slot is present but inert (deferred).
 14. Participación carries a caption explaining it includes people now paused/out of rotation; the `completedCount > 0` filter is preserved.
