@@ -23,7 +23,13 @@ import {
 } from "./assignment-workflow.js";
 import { selectNextPerson } from "./rotation.js";
 import { buildParticipationSummary, getHomeStats } from "./people.js";
-import { displayPersonName } from "./people-model.js";
+import {
+  MEMBERSHIP_STATE,
+  displayPersonName,
+  getMembershipState,
+  membershipStateToFields,
+  normalizeComparableName,
+} from "./people-model.js";
 
 const OPENING_READING_ROLE_ID = "opening-reading";
 
@@ -48,9 +54,18 @@ const stateRefs = {
   currentDate: "",
   sheetType: null,
   sheetTrigger: null,
+  editTrigger: null,
+  editPersonId: null,
+  pendingAdd: null,
 };
 
 const STATUS_ICON = { selected: "○", confirmed: "●", completed: "✓" };
+
+const MEMBERSHIP_META = {
+  [MEMBERSHIP_STATE.ROTATION]: { label: "En rotación", icon: "●" },
+  [MEMBERSHIP_STATE.PAUSED]: { label: "En pausa", icon: "Ⅱ" },
+  [MEMBERSHIP_STATE.OUT]: { label: "Fuera de rotación", icon: "○" },
+};
 
 function uid(prefix) {
   return `${prefix}-${crypto.randomUUID()}`;
@@ -92,7 +107,7 @@ function getCurrentAssignment() {
 }
 
 function announce(message) {
-  const region = document.getElementById("home-live-region");
+  const region = document.getElementById("app-live-region");
   region.textContent = "";
   requestAnimationFrame(() => { region.textContent = message; });
 }
@@ -324,45 +339,55 @@ async function declineAndReplace(reasonCode, reasonText) {
 function renderPeople() {
   const list = document.getElementById("people-list");
   const people = getPeople().sort((a, b) => a.name.localeCompare(b.name));
+  const summaries = new Map(
+    buildParticipationSummary(people, getAssignments(), OPENING_READING_ROLE_ID)
+      .map((item) => [item.personId, item]),
+  );
+  const inRotation = people.filter((person) => person.active && !person.paused).length;
+
+  document.getElementById("people-heading").textContent = `Personas · ${inRotation} en rotación`;
+  document.getElementById("people-empty").hidden = people.length > 0;
 
   list.innerHTML = "";
   people.forEach((person) => {
     const li = document.createElement("li");
     li.className = "people-item";
+    const identity = document.createElement("div");
+    identity.className = "person-identity";
     const name = document.createElement("strong");
-    name.textContent = displayPersonName(person);
+    name.textContent = person.name;
+    identity.appendChild(name);
+    if (person.title) {
+      const title = document.createElement("span");
+      title.className = "muted person-title";
+      title.textContent = person.title;
+      identity.appendChild(title);
+    }
 
-    const status = document.createElement("div");
-    status.className = "muted";
-    status.textContent = `${person.active ? "Activa" : "Inactiva"} · ${person.paused ? "En pausa" : "Disponible"}`;
+    const membershipState = getMembershipState(person);
+    const membership = document.createElement("span");
+    membership.className = `membership-chip membership-${membershipState}`;
+    membership.textContent = `${MEMBERSHIP_META[membershipState].icon} ${MEMBERSHIP_META[membershipState].label}`;
+
+    const summary = summaries.get(person.id);
+    const participation = document.createElement("p");
+    participation.className = "muted person-participation";
+    participation.textContent = summary?.completedCount
+      ? `Última vez: ${formatDate(summary.lastServiceDate)} · ${summary.completedCount} ${summary.completedCount === 1 ? "vez" : "veces"}`
+      : "Nunca ha participado";
 
     const actions = document.createElement("div");
     actions.className = "person-actions";
 
     const renameBtn = document.createElement("button");
     renameBtn.className = "btn";
-    renameBtn.dataset.action = "rename";
+    renameBtn.dataset.action = "edit";
     renameBtn.dataset.id = person.id;
     renameBtn.textContent = "Editar";
+    renameBtn.setAttribute("aria-label", `Editar ${displayPersonName(person)}`);
 
-    const activeLabel = document.createElement("label");
-    const activeInput = document.createElement("input");
-    activeInput.type = "checkbox";
-    activeInput.dataset.action = "active";
-    activeInput.dataset.id = person.id;
-    activeInput.checked = person.active;
-    activeLabel.append(activeInput, " Activa");
-
-    const pausedLabel = document.createElement("label");
-    const pausedInput = document.createElement("input");
-    pausedInput.type = "checkbox";
-    pausedInput.dataset.action = "paused";
-    pausedInput.dataset.id = person.id;
-    pausedInput.checked = person.paused;
-    pausedLabel.append(pausedInput, " En pausa");
-
-    actions.append(renameBtn, activeLabel, pausedLabel);
-    li.append(name, status, actions);
+    actions.append(renameBtn);
+    li.append(identity, membership, participation, actions);
     list.appendChild(li);
   });
 }
@@ -456,6 +481,9 @@ function setupTabs() {
       button.setAttribute("aria-current", "page");
       views.forEach((view) => view.classList.remove("active"));
       document.getElementById(`view-${tab}`).classList.add("active");
+      if (tab === "people" && getPeople().length === 0) {
+        document.getElementById("new-person-name").focus();
+      }
     });
   });
 }
@@ -509,7 +537,28 @@ async function refreshPeople({ showFallbackMessage = false } = {}) {
 }
 
 function setupPeopleHandlers() {
-  document.getElementById("add-person-form").addEventListener("submit", async (event) => {
+  const addForm = document.getElementById("add-person-form");
+  const duplicateDialog = document.getElementById("duplicate-person-dialog");
+  const editDialog = document.getElementById("edit-person-dialog");
+
+  async function addPerson({ name, title }) {
+    let saved = false;
+    try {
+      await addSharedPerson({ name, title: title || null });
+      saved = true;
+    } catch (error) {
+      saved = error.localSaved === true;
+      alert(error.message);
+    }
+
+    if (!saved) return;
+    document.getElementById("new-person-name").value = "";
+    document.getElementById("new-person-title").value = "";
+    renderAll();
+    announce(`Agregada: ${name}.`);
+  }
+
+  addForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const nameInput = document.getElementById("new-person-name");
     const titleInput = document.getElementById("new-person-title");
@@ -517,58 +566,79 @@ function setupPeopleHandlers() {
     const title = titleInput.value.trim();
     if (!name) return;
 
-    try {
-      await addSharedPerson({ name, title: title || null });
-    } catch (error) {
-      alert(error.message);
+    const isDuplicate = getPeople().some(
+      (person) => normalizeComparableName(person.name) === normalizeComparableName(name),
+    );
+    if (isDuplicate) {
+      stateRefs.pendingAdd = { name, title };
+      duplicateDialog.returnValue = "";
+      duplicateDialog.showModal();
+      duplicateDialog.querySelector('button[value="cancel"]').focus();
+      return;
     }
+    await addPerson({ name, title });
+  });
 
-    nameInput.value = "";
-    titleInput.value = "";
-    renderAll();
+  duplicateDialog.addEventListener("close", async () => {
+    const pending = stateRefs.pendingAdd;
+    stateRefs.pendingAdd = null;
+    if (duplicateDialog.returnValue === "confirm" && pending) await addPerson(pending);
+    else document.getElementById("new-person-name").focus();
   });
 
   document.getElementById("people-list").addEventListener("click", async (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
-    if (target.dataset.action !== "rename") return;
+    if (target.dataset.action !== "edit") return;
     const personId = target.dataset.id;
     const people = getPeople();
     const person = people.find((item) => item.id === personId);
     if (!person) return;
 
-    const updatedName = prompt("Nuevo nombre:", person.name);
-    if (updatedName === null || !updatedName.trim()) return;
-    const updatedTitle = prompt("Título (opcional, deje vacío para quitarlo):", person.title || "");
-    if (updatedTitle === null) return;
-
-    try {
-      await updateSharedPerson(personId, { name: updatedName.trim(), title: updatedTitle.trim() || null });
-    } catch (error) {
-      alert(error.message);
-    }
-
-    renderAll();
+    stateRefs.editTrigger = target;
+    stateRefs.editPersonId = person.id;
+    document.getElementById("edit-person-id").value = person.id;
+    document.getElementById("edit-person-name").value = person.name;
+    document.getElementById("edit-person-title-input").value = person.title || "";
+    document.getElementById("edit-person-membership").value = getMembershipState(person);
+    editDialog.showModal();
+    document.getElementById("edit-person-name").focus();
   });
 
-  document.getElementById("people-list").addEventListener("change", async (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLInputElement)) return;
-    const personId = target.dataset.id;
-    if (!personId) return;
-
+  document.getElementById("edit-person-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const personId = document.getElementById("edit-person-id").value;
+    const name = document.getElementById("edit-person-name").value.trim();
+    const title = document.getElementById("edit-person-title-input").value.trim();
+    const membershipState = document.getElementById("edit-person-membership").value;
+    if (!name) return;
+    let saved = false;
     try {
-      if (target.dataset.action === "active") {
-        await updateSharedPerson(personId, { active: target.checked });
-      }
-      if (target.dataset.action === "paused") {
-        await updateSharedPerson(personId, { paused: target.checked });
-      }
+      await updateSharedPerson(personId, {
+        name,
+        title: title || null,
+        ...membershipStateToFields(membershipState),
+      });
+      saved = true;
     } catch (error) {
+      saved = error.localSaved === true;
       alert(error.message);
     }
-
+    if (!saved) return;
+    editDialog.close();
     renderAll();
+    announce(`Cambios guardados para ${name}. ${name}: ${MEMBERSHIP_META[membershipState].label}.`);
+  });
+
+  document.getElementById("btn-cancel-edit-person").addEventListener("click", () => editDialog.close());
+  editDialog.addEventListener("close", () => {
+    const trigger = stateRefs.editTrigger?.isConnected
+      ? stateRefs.editTrigger
+      : Array.from(document.querySelectorAll('[data-action="edit"]'))
+        .find((button) => button.dataset.id === stateRefs.editPersonId);
+    trigger?.focus();
+    stateRefs.editTrigger = null;
+    stateRefs.editPersonId = null;
   });
 }
 

@@ -217,6 +217,20 @@ select {
   gap: 0.65rem;
 }
 
+.people-header-card h2 { margin-top: 0; }
+.shared-roster-note { margin: 0.85rem 0 0; font-size: 0.9rem; }
+.person-identity { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.35rem; }
+.person-title { font-size: 0.9rem; }
+.person-title::before { content: "· "; }
+.person-participation { margin: 0.55rem 0 0; font-size: 0.9rem; }
+.membership-chip {
+  display: inline-block; margin-top: 0.45rem; padding: 0.2rem 0.55rem;
+  border-radius: 999px; font-size: 0.875rem; font-weight: 600;
+}
+.membership-rotation { color: #4d4a2a; background: #f1edcf; }
+.membership-paused { color: #6b4c17; background: #f5e8cb; }
+.membership-out { color: #514b47; background: #ebe6e2; }
+
 .people-item,
 .history-item {
   border: 1px solid var(--border);
@@ -225,12 +239,18 @@ select {
 }
 
 .person-actions {
-  display: grid;
-  grid-template-columns: repeat(3, auto);
-  gap: 0.45rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
   align-items: center;
   margin-top: 0.5rem;
 }
+
+#edit-person-dialog,
+#duplicate-person-dialog { max-width: 430px; }
+#edit-person-dialog h2,
+#duplicate-person-dialog h2 { margin: 0 0 0.25rem; font-size: 1.25rem; }
+.dialog-actions { margin-top: 0.4rem; }
 
 dialog {
   border: 1px solid var(--border);

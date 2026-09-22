@@ -18,6 +18,28 @@ export function normalizeTitle(value) {
   return trimmed ? trimmed : null;
 }
 
+export const MEMBERSHIP_STATE = Object.freeze({
+  ROTATION: "rotation",
+  PAUSED: "paused",
+  OUT: "out",
+});
+
+export function getMembershipState(person = {}) {
+  if (person.active === false) return MEMBERSHIP_STATE.OUT;
+  if (person.paused === true) return MEMBERSHIP_STATE.PAUSED;
+  return MEMBERSHIP_STATE.ROTATION;
+}
+
+export function membershipStateToFields(state) {
+  if (state === MEMBERSHIP_STATE.PAUSED) return { active: true, paused: true };
+  if (state === MEMBERSHIP_STATE.OUT) return { active: false, paused: false };
+  return { active: true, paused: false };
+}
+
+export function normalizeComparableName(value = "") {
+  return normalizedName(typeof value === "string" ? value : "");
+}
+
 function normalizedName(value) {
   return value
     .normalize("NFD")
