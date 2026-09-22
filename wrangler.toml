@@ -1,0 +1,4 @@
+[[d1_databases]]
+binding = "DB"
+database_name = "ibch-service-planner"
+migrations_dir = "migrations"
