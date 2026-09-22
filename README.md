@@ -120,7 +120,7 @@ Deployment workflow environment constant:
    - Cloudflare D1 database create/migration operations
    - If your token currently has Pages-only scope, update or replace it to include D1 management permissions.
 3. Run **Initialize Cloudflare Pages** workflow once.
-4. Run **Initialize Cloudflare D1** workflow once (creates DB and applies migrations).
+4. Optional: run **Initialize Cloudflare D1** workflow once if you want to provision the database manually ahead of the first deploy. The normal `Deploy` workflow now creates the named D1 database automatically if it is missing, then applies migrations.
 5. In Cloudflare Pages project settings, add a D1 binding:
    - Binding name: `DB`
    - Database: `ibch-service-planner`
