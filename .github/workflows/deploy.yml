@@ -27,6 +27,7 @@ jobs:
       - name: Apply D1 migrations
         uses: cloudflare/wrangler-action@v3
         with:
+          wranglerVersion: 4.136.1
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: d1 migrations apply ${{ env.CLOUDFLARE_D1_DATABASE_NAME }} --remote
@@ -35,6 +36,7 @@ jobs:
         id: cloudflare-pages-deploy
         uses: cloudflare/wrangler-action@v3
         with:
+          wranglerVersion: 4.136.1
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy . --project-name=ibch-service-planner
