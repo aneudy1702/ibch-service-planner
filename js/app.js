@@ -526,7 +526,6 @@ function setupPeopleHandlers() {
     nameInput.value = "";
     titleInput.value = "";
     renderAll();
-    announce(`Fecha actualizada: ${formatDate(value)}`);
   });
 
   document.getElementById("people-list").addEventListener("click", async (event) => {
