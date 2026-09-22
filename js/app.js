@@ -36,9 +36,9 @@ const REASON_TEXT = {
 };
 
 const STATUS_TEXT = {
-  selected: "Seleccionada",
+  selected: "Propuesta",
   confirmed: "Confirmada",
-  declined: "Rechazada",
+  declined: "Reemplazada",
   completed: "Completada",
   cancelled: "Cancelada",
   none: "Sin asignación",
@@ -46,7 +46,11 @@ const STATUS_TEXT = {
 
 const stateRefs = {
   currentDate: "",
+  sheetType: null,
+  sheetTrigger: null,
 };
+
+const STATUS_ICON = { selected: "○", confirmed: "●", completed: "✓" };
 
 function uid(prefix) {
   return `${prefix}-${crypto.randomUUID()}`;
@@ -76,11 +80,21 @@ function formatDate(dateString) {
 }
 
 function getCurrentAssignment() {
-  return getCurrentAssignmentForService(
+  const active = getCurrentAssignmentForService(
     getAssignments(),
     OPENING_READING_ROLE_ID,
     stateRefs.currentDate,
   );
+  if (active) return active;
+  return getAssignments()
+    .filter((item) => item.roleId === OPENING_READING_ROLE_ID && item.serviceDate === stateRefs.currentDate && item.status === STATUS.COMPLETED)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0] || null;
+}
+
+function announce(message) {
+  const region = document.getElementById("home-live-region");
+  region.textContent = "";
+  requestAnimationFrame(() => { region.textContent = message; });
 }
 
 function setButtonState(buttonId, enabled) {
@@ -97,9 +111,18 @@ function renderHome() {
     ? people.find((person) => person.id === currentAssignment.personId)
     : null;
 
-  document.getElementById("next-service-label").textContent = formatDate(stateRefs.currentDate);
-  document.getElementById("assignment-person").textContent = displayPersonName(currentPerson) || "Sin asignación";
-  document.getElementById("assignment-status").textContent = `Estado: ${STATUS_TEXT[currentAssignment?.status || "none"]}`;
+  const formattedDate = formatDate(stateRefs.currentDate);
+  document.getElementById("next-service-label").textContent = formattedDate;
+  document.getElementById("home-service-date").value = stateRefs.currentDate;
+  document.getElementById("btn-edit-service-date").setAttribute("aria-label", `Cambiar fecha del próximo servicio, actual ${formattedDate}`);
+  document.getElementById("assignment-person").textContent = displayPersonName(currentPerson) || "Sin asignar aún";
+  document.getElementById("assignment-person").classList.toggle("muted", !currentPerson);
+
+  const status = currentAssignment?.status;
+  const statusBadge = document.getElementById("assignment-status");
+  statusBadge.hidden = !status;
+  statusBadge.className = `status-badge status-${status || "none"}`;
+  statusBadge.textContent = status ? `${STATUS_ICON[status] || ""} ${STATUS_TEXT[status]}`.trim() : "";
 
   const actionState = getHomeActionState(currentAssignment);
   setButtonState("btn-select-person", actionState.canSelect);
@@ -108,6 +131,21 @@ function renderHome() {
   setButtonState("btn-decline", actionState.canDecline);
 
   const stats = getHomeStats(people, assignments, OPENING_READING_ROLE_ID);
+  const hasEligiblePeople = stats.rotationTotal > 0;
+  setButtonState("btn-go-people", !hasEligiblePeople);
+  if (!hasEligiblePeople) setButtonState("btn-select-person", false);
+
+  const helper = document.getElementById("assignment-helper");
+  if (!hasEligiblePeople) {
+    helper.textContent = "No hay personas en la rotación. Agrega personas para comenzar.";
+  } else if (!currentAssignment) {
+    helper.textContent = "Toca «Seleccionar persona» para proponer a alguien.";
+  } else if (status === STATUS.COMPLETED) {
+    helper.textContent = "Servicio completado. Cambia la fecha para planificar el próximo. Para corregir, cambia la fecha o edita en Historial.";
+  } else {
+    helper.textContent = "";
+  }
+  document.getElementById("rotation-empty").hidden = hasEligiblePeople;
   const statsRoot = document.getElementById("home-stats");
   statsRoot.innerHTML = "";
 
@@ -115,15 +153,66 @@ function renderHome() {
     { value: stats.rotationTotal, label: "Personas elegibles" },
     { value: stats.participated, label: "Ya participaron" },
     { value: stats.waiting, label: "Esperando oportunidad" },
-  ].forEach((stat) => {
+  ].forEach((stat, index) => {
     const card = document.createElement("div");
+    card.className = "stat-card";
+    card.role = "button";
+    card.tabIndex = 0;
+    card.dataset.sheet = ["eligible", "participated", "waiting"][index];
+    card.setAttribute("aria-label", `${stat.label}, ${stat.value}. Ver lista.`);
     const value = document.createElement("strong");
     value.textContent = `${stat.value}`;
+    const chevron = document.createElement("span");
+    chevron.className = "stat-chevron";
+    chevron.setAttribute("aria-hidden", "true");
+    chevron.textContent = "›";
     const label = document.createElement("span");
     label.textContent = stat.label;
-    card.append(value, document.createElement("br"), label);
+    card.append(value, chevron, label);
     statsRoot.appendChild(card);
   });
+
+  if (document.getElementById("people-sheet").open && stateRefs.sheetType) renderPeopleSheet(stateRefs.sheetType);
+}
+
+function getSheetPeople(type) {
+  const people = getPeople();
+  const eligible = people.filter((person) => person.active && !person.paused);
+  const summaries = new Map(buildParticipationSummary(people, getAssignments(), OPENING_READING_ROLE_ID).map((item) => [item.personId, item]));
+  let filtered = eligible;
+  if (type === "participated") filtered = eligible.filter((person) => summaries.get(person.id)?.completedCount > 0);
+  if (type === "waiting") filtered = eligible.filter((person) => summaries.get(person.id)?.completedCount === 0);
+  filtered.sort(type === "participated"
+    ? (a, b) => (summaries.get(b.id)?.lastServiceDate || "").localeCompare(summaries.get(a.id)?.lastServiceDate || "") || a.name.localeCompare(b.name)
+    : (a, b) => a.name.localeCompare(b.name));
+  return filtered.map((person) => ({ person, summary: summaries.get(person.id) }));
+}
+
+function renderPeopleSheet(type) {
+  const config = {
+    eligible: ["Personas elegibles", "No hay personas elegibles. Revisa quién está activo o en pausa."],
+    participated: ["Ya participaron", "Nadie ha participado todavía."],
+    waiting: ["Esperando oportunidad", "Todos han participado al menos una vez. 🎉"],
+  }[type];
+  const rows = getSheetPeople(type);
+  document.getElementById("sheet-title").textContent = `${config[0]} (${rows.length})`;
+  const list = document.getElementById("sheet-people-list");
+  list.innerHTML = "";
+  rows.forEach(({ person, summary }) => {
+    const li = document.createElement("li");
+    const name = document.createElement("strong");
+    name.textContent = displayPersonName(person);
+    const detail = document.createElement("span");
+    detail.className = "muted";
+    if (type === "eligible") detail.textContent = summary.completedCount ? `Ha participado ${summary.completedCount} · Última vez: ${formatDate(summary.lastServiceDate)}` : "Nunca ha participado";
+    else if (type === "participated") detail.textContent = `Última vez: ${formatDate(summary.lastServiceDate)} · ${summary.completedCount} ${summary.completedCount === 1 ? "vez" : "veces"}`;
+    else detail.textContent = "Nunca ha participado";
+    li.append(name, detail);
+    list.appendChild(li);
+  });
+  const empty = document.getElementById("sheet-empty");
+  empty.hidden = rows.length > 0;
+  empty.textContent = config[1];
 }
 
 function createSelectionAssignment(personId) {
@@ -162,6 +251,7 @@ function selectPerson() {
 
   createSelectionAssignment(picked.id);
   renderAll();
+  announce(`Propuesta: ${displayPersonName(picked)}`);
 }
 
 function confirmCurrentAssignment() {
@@ -173,6 +263,7 @@ function confirmCurrentAssignment() {
     return;
   }
   renderAll();
+  announce(`Confirmada: ${displayPersonName(getPeople().find((person) => person.id === current.personId))}`);
 }
 
 function completeCurrentAssignment() {
@@ -184,6 +275,7 @@ function completeCurrentAssignment() {
     return;
   }
   renderAll();
+  announce(`Completada: ${displayPersonName(getPeople().find((person) => person.id === current.personId))}`);
 }
 
 async function declineAndReplace(reasonCode, reasonText) {
@@ -225,6 +317,8 @@ async function declineAndReplace(reasonCode, reasonText) {
     alert("No hay otra persona elegible para este servicio.");
   }
   renderAll();
+  const replacement = getCurrentAssignment();
+  if (replacement) announce(`Nueva propuesta: ${displayPersonName(getPeople().find((person) => person.id === replacement.personId))}`);
 }
 
 function renderPeople() {
@@ -280,6 +374,12 @@ function renderHistory() {
   const people = getPeople();
 
   historyList.innerHTML = "";
+  if (!assignments.length) {
+    const empty = document.createElement("li");
+    empty.className = "muted empty-list";
+    empty.textContent = "Todavía no hay asignaciones registradas.";
+    historyList.appendChild(empty);
+  }
   assignments.forEach((assignment) => {
     const person = people.find((item) => item.id === assignment.personId);
     const role = ROLES.find((item) => item.id === assignment.roleId);
@@ -308,7 +408,14 @@ function renderHistory() {
   });
 
   participationList.innerHTML = "";
-  buildParticipationSummary(people, assignments, OPENING_READING_ROLE_ID).forEach((item) => {
+  const completedParticipation = buildParticipationSummary(people, assignments, OPENING_READING_ROLE_ID).filter((item) => item.completedCount > 0);
+  if (!completedParticipation.length) {
+    const empty = document.createElement("li");
+    empty.className = "muted empty-list";
+    empty.textContent = "Aún no hay participaciones completadas.";
+    participationList.appendChild(empty);
+  }
+  completedParticipation.forEach((item) => {
     const li = document.createElement("li");
     li.className = "history-item";
     const person = people.find((entry) => entry.id === item.personId);
@@ -341,12 +448,54 @@ function setupTabs() {
   document.querySelectorAll(".nav-btn").forEach((button) => {
     button.addEventListener("click", () => {
       const tab = button.dataset.tab;
-      document.querySelectorAll(".nav-btn").forEach((btn) => btn.classList.remove("active"));
+      document.querySelectorAll(".nav-btn").forEach((btn) => {
+        btn.classList.remove("active");
+        btn.removeAttribute("aria-current");
+      });
       button.classList.add("active");
+      button.setAttribute("aria-current", "page");
       views.forEach((view) => view.classList.remove("active"));
       document.getElementById(`view-${tab}`).classList.add("active");
     });
   });
+}
+
+function switchToTab(tab) {
+  document.querySelector(`.nav-btn[data-tab="${tab}"]`).click();
+}
+
+function setupHomeInteractions() {
+  const dateInput = document.getElementById("home-service-date");
+  document.getElementById("btn-edit-service-date").addEventListener("click", () => {
+    if (typeof dateInput.showPicker === "function") dateInput.showPicker();
+    else { dateInput.tabIndex = 0; dateInput.focus(); dateInput.click(); }
+  });
+  dateInput.addEventListener("change", () => {
+    if (!dateInput.value) return;
+    saveSettings({ nextServiceDate: dateInput.value });
+    stateRefs.currentDate = dateInput.value;
+    renderAll();
+    announce(`Fecha actualizada: ${formatDate(dateInput.value)}`);
+  });
+  document.getElementById("btn-go-people").addEventListener("click", () => switchToTab("people"));
+
+  const stats = document.getElementById("home-stats");
+  const openFromCard = (card) => {
+    stateRefs.sheetType = card.dataset.sheet;
+    stateRefs.sheetTrigger = card;
+    renderPeopleSheet(stateRefs.sheetType);
+    document.getElementById("people-sheet").showModal();
+    document.getElementById("btn-close-sheet").focus();
+  };
+  stats.addEventListener("click", (event) => { const card = event.target.closest(".stat-card"); if (card) openFromCard(card); });
+  stats.addEventListener("keydown", (event) => {
+    const card = event.target.closest(".stat-card");
+    if (card && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); openFromCard(card); }
+  });
+  const sheet = document.getElementById("people-sheet");
+  document.getElementById("btn-close-sheet").addEventListener("click", () => sheet.close());
+  sheet.addEventListener("click", (event) => { if (event.target === sheet) sheet.close(); });
+  sheet.addEventListener("close", () => { stateRefs.sheetTrigger?.focus(); stateRefs.sheetTrigger = null; stateRefs.sheetType = null; });
 }
 
 async function refreshPeople({ showFallbackMessage = false } = {}) {
@@ -377,6 +526,7 @@ function setupPeopleHandlers() {
     nameInput.value = "";
     titleInput.value = "";
     renderAll();
+    announce(`Fecha actualizada: ${formatDate(value)}`);
   });
 
   document.getElementById("people-list").addEventListener("click", async (event) => {
@@ -511,6 +661,7 @@ async function bootstrap() {
   stateRefs.currentDate = settings.nextServiceDate;
 
   setupTabs();
+  setupHomeInteractions();
   setupPeopleHandlers();
   setupAssignmentActions();
   setupSettings();
