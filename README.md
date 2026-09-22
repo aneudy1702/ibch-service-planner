@@ -14,7 +14,7 @@ The app supports:
 - Assignment workflow (`selected`, `confirmed`, `declined`, `completed`, `cancelled`)
 - Decline reasons and replacement selection
 - Assignment history + simple participation summary
-- Export/import backup JSON
+- Export/import of local backup data without overwriting shared planner state
 - Offline-capable installable PWA shell
 
 ## Architecture
@@ -25,10 +25,13 @@ Static app + minimal Cloudflare Pages Functions:
 - `css/app.css`: Mobile-first styling
 - `js/app.js`: UI wiring and workflow behavior
 - `js/data.js`: People data access boundary (D1-first with local cache fallback)
-- `js/storage.js`: localStorage abstraction for cached people + local assignments/history/settings
+- `js/planner-data.js`: Shared planner boundary, optimistic writes, offline operation queue, and reconciliation
+- `js/storage.js`: localStorage abstraction for shared caches, pending operations, and device metadata
 - `js/people-model.js`: people normalization (including pastor deduplication) + title display helpers
-- `functions/api/people.js`: minimal API (`GET`, `POST`, `PATCH`) backed by D1
-- `migrations/0001_people.sql`: D1 schema + idempotent people seed
+- `functions/api/people.js`: people API (`GET`, `POST`, `PATCH`) backed by D1
+- `functions/api/planner.js`: validated planner API for assignments, replacements, settings, and legacy bootstrap
+- `migrations/0001_people.sql`: people schema + idempotent seed
+- `migrations/0002_shared_planner.sql`: shared assignments/settings schema and integrity indexes
 - `js/rotation.js`: Selection/rotation logic
 - `js/people.js`: Participation summaries/stat helpers
 - `manifest.json` + `service-worker.js`: PWA install/offline support
@@ -39,16 +42,37 @@ Static app + minimal Cloudflare Pages Functions:
 
 - `people`
   - `id`, `name`, `title`, `active`, `paused`, `created_at`, `updated_at`
+- `assignments`
+  - assignment/history fields, replacement link, timestamps, and optimistic `version`
+- `planner_settings`
+  - shared `next_service_date`, timestamp, and optimistic `version`
+- `planner_meta`
+  - server-side guard for the one-time legacy bootstrap
 
-People edits now sync across trusted users/devices through D1.
+The partial unique index on `service_date + role_id` for `selected` and `confirmed` rows prevents two active assignments for the same service. Declined, completed, and cancelled rows remain as history.
 
-### Local-only in browser `localStorage`
+### Local in browser `localStorage`
 
-- Assignments/history
-- Next service date settings
-- Local cache of people used for fallback when D1 is temporarily unavailable
+- Cached people, assignments/history, and next service date
+- Explicit pending planner operations created while offline
+- Conflicted operations retained for diagnosis/recovery
+- Device-specific migration and cache metadata
 
-The app no longer treats stale local cache as authoritative when D1 is reachable.
+D1 is authoritative whenever it is reachable. A refresh or PWA reopen pulls shared state; `/api/*` requests bypass the app-shell cache.
+
+## Synchronization, concurrency, and offline behavior
+
+Planner actions save immediately through `js/planner-data.js`; there is no separate Save action. Assignment transitions and setting changes include the version the client observed. A stale version receives HTTP `409`, the client reloads D1, preserves the rejected operation locally, and explains the conflict in Spanish instead of overwriting newer state.
+
+Replacement is one server operation. D1 executes insertion of the replacement, decline of the current assignment, and activation of the replacement as one transactional batch. Stable assignment IDs make retries idempotent.
+
+When the network is unavailable, the app shows its latest cache, applies a safe optimistic view, and queues the explicit operation. On the next successful load, operations replay in order. Network/5xx failures remain pending; a permanent failure or conflict is preserved locally and does not overwrite D1.
+
+## One-time legacy assignment migration
+
+An older installed client may already contain meaningful local assignment history. On its first successful planner load, it requests a guarded bootstrap using the existing IDs and timestamps. D1 accepts the snapshot only when shared assignments are empty and the `legacy_bootstrap` marker has not been claimed. The marker, shared date, and assignments are written in one batch.
+
+If D1 already has assignments—or another client wins the initialization race—the server returns its existing shared state and does not merge or overwrite it. The client then marks bootstrap complete locally and uses D1. No localStorage reset is required.
 
 ## Pastor canonical record
 
@@ -145,12 +169,13 @@ After this setup, normal deployments on `main` run tests, apply migrations, and 
 
 ## API error handling
 
-If the people API is unavailable, the app shows a clear Spanish warning and keeps user edits in local cache instead of silently dropping them. Those edits are not considered synced until D1 is reachable again.
+If a shared API is unavailable, the app shows a clear Spanish warning and uses cached data. Offline edits are retained and are not considered synced until D1 accepts them.
 
 ## Backup and import
 
-- Export creates full app model JSON (for example `ibch-service-planner-backup-YYYY-MM-DD.json`)
-- Import validates schema version, people, assignments, IDs, statuses, service dates, and settings before replacing current local state
+- Export creates a local snapshot JSON (for example `ibch-service-planner-backup-YYYY-MM-DD.json`).
+- Import validates the snapshot but deliberately preserves the current shared people, assignment cache, pending operations, and shared next-service date; only device-local metadata remains importable.
+- Restoring shared D1 planner history from a backup is intentionally deferred because a client-side snapshot must not silently overwrite multi-client authoritative data.
 
 ## Dates
 

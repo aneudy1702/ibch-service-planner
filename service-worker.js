@@ -1,10 +1,11 @@
-const CACHE_NAME = "ibch-service-planner-v4";
+const CACHE_NAME = "ibch-service-planner-v5";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./css/app.css",
   "./js/app.js",
   "./js/data.js",
+  "./js/planner-data.js",
   "./js/people-model.js",
   "./js/storage.js",
   "./js/rotation.js",
@@ -28,5 +29,10 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
+  if (url.origin === self.location.origin && url.pathname.startsWith("/api/")) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
   event.respondWith(caches.match(event.request).then((cached) => cached || fetch(event.request)));
 });

@@ -1,16 +1,20 @@
 import {
   ROLES,
-  addAssignment,
   exportState,
   getAssignments,
   getPeople,
   getSettings,
   initializeState,
   replaceStateFromImport,
-  saveSettings,
-  upsertAssignment,
 } from "./storage.js";
 import { addSharedPerson, loadPeople, updateSharedPerson } from "./data.js";
+import {
+  createSharedAssignment,
+  refreshSharedPlannerState,
+  replaceSharedAssignment,
+  transitionSharedAssignment,
+  updateSharedNextServiceDate,
+} from "./planner-data.js";
 import {
   STATUS,
   assertCanSelectPerson,
@@ -230,18 +234,25 @@ function renderPeopleSheet(type) {
   empty.textContent = config[1];
 }
 
-function createSelectionAssignment(personId) {
-  const record = buildSelectionAssignment({
+function buildNewSelectionAssignment(personId) {
+  return buildSelectionAssignment({
     id: uid("assignment"),
     personId,
     roleId: OPENING_READING_ROLE_ID,
     serviceDate: stateRefs.currentDate,
   });
-  addAssignment(record);
-  return record;
 }
 
-function selectPerson() {
+function showPlannerWriteError(error) {
+  alert(error.message);
+  if (error.localSaved || error.conflict) {
+    stateRefs.currentDate = getSettings().nextServiceDate;
+    renderAll();
+  }
+  return error.localSaved === true;
+}
+
+async function selectPerson() {
   const current = getCurrentAssignment();
   try {
     assertCanSelectPerson(current);
@@ -264,30 +275,32 @@ function selectPerson() {
     return;
   }
 
-  createSelectionAssignment(picked.id);
+  try {
+    await createSharedAssignment(buildNewSelectionAssignment(picked.id));
+  } catch (error) {
+    if (!showPlannerWriteError(error)) return;
+  }
   renderAll();
   announce(`Propuesta: ${displayPersonName(picked)}`);
 }
 
-function confirmCurrentAssignment() {
+async function confirmCurrentAssignment() {
   const current = getCurrentAssignment();
   try {
-    upsertAssignment(confirmAssignment(current));
+    await transitionSharedAssignment(current, confirmAssignment(current));
   } catch (error) {
-    alert(error.message);
-    return;
+    if (!showPlannerWriteError(error)) return;
   }
   renderAll();
   announce(`Confirmada: ${displayPersonName(getPeople().find((person) => person.id === current.personId))}`);
 }
 
-function completeCurrentAssignment() {
+async function completeCurrentAssignment() {
   const current = getCurrentAssignment();
   try {
-    upsertAssignment(completeAssignment(current));
+    await transitionSharedAssignment(current, completeAssignment(current));
   } catch (error) {
-    alert(error.message);
-    return;
+    if (!showPlannerWriteError(error)) return;
   }
   renderAll();
   announce(`Completada: ${displayPersonName(getPeople().find((person) => person.id === current.personId))}`);
@@ -317,18 +330,28 @@ async function declineAndReplace(reasonCode, reasonText) {
     }
   }
 
-  upsertAssignment(declinedAssignment);
-
+  const assignmentsAfterDecline = getAssignments().map((assignment) =>
+    assignment.id === current.id ? declinedAssignment : assignment,
+  );
   const nextPerson = selectNextPerson({
     people: getPeople(),
-    assignments: getAssignments(),
+    assignments: assignmentsAfterDecline,
     roleId: OPENING_READING_ROLE_ID,
     serviceDate: stateRefs.currentDate,
   });
 
   if (nextPerson) {
-    createSelectionAssignment(nextPerson.id);
+    try {
+      await replaceSharedAssignment(current, declinedAssignment, buildNewSelectionAssignment(nextPerson.id));
+    } catch (error) {
+      if (!showPlannerWriteError(error)) return;
+    }
   } else {
+    try {
+      await transitionSharedAssignment(current, declinedAssignment);
+    } catch (error) {
+      if (!showPlannerWriteError(error)) return;
+    }
     alert("No hay otra persona elegible para este servicio.");
   }
   renderAll();
@@ -498,12 +521,16 @@ function setupHomeInteractions() {
     if (typeof dateInput.showPicker === "function") dateInput.showPicker();
     else { dateInput.tabIndex = 0; dateInput.focus(); dateInput.click(); }
   });
-  dateInput.addEventListener("change", () => {
+  dateInput.addEventListener("change", async () => {
     if (!dateInput.value) return;
-    saveSettings({ nextServiceDate: dateInput.value });
-    stateRefs.currentDate = dateInput.value;
+    try {
+      await updateSharedNextServiceDate(dateInput.value);
+    } catch (error) {
+      if (!showPlannerWriteError(error)) return;
+    }
+    stateRefs.currentDate = getSettings().nextServiceDate;
     renderAll();
-    announce(`Fecha actualizada: ${formatDate(dateInput.value)}`);
+    announce(`Fecha actualizada: ${formatDate(stateRefs.currentDate)}`);
   });
   document.getElementById("btn-go-people").addEventListener("click", () => switchToTab("people"));
 
@@ -680,7 +707,7 @@ async function importBackup(file) {
   const settings = getSettings();
   stateRefs.currentDate = settings.nextServiceDate;
   renderAll();
-  alert("Respaldo importado correctamente.");
+  alert("Respaldo local importado. Las asignaciones y la fecha compartidas no se modificaron.");
 }
 
 function setupAssignmentActions() {
@@ -706,12 +733,17 @@ function setupAssignmentActions() {
 }
 
 function setupSettings() {
-  document.getElementById("btn-save-date").addEventListener("click", () => {
+  document.getElementById("btn-save-date").addEventListener("click", async () => {
     const value = document.getElementById("next-service-date").value;
     if (!value) return;
-    saveSettings({ nextServiceDate: value });
-    stateRefs.currentDate = value;
+    try {
+      await updateSharedNextServiceDate(value);
+    } catch (error) {
+      if (!showPlannerWriteError(error)) return;
+    }
+    stateRefs.currentDate = getSettings().nextServiceDate;
     renderAll();
+    announce(`Fecha actualizada: ${formatDate(stateRefs.currentDate)}`);
   });
 
   document.getElementById("btn-export").addEventListener("click", exportBackup);
@@ -737,6 +769,14 @@ async function bootstrap() {
   renderAll();
 
   await refreshPeople({ showFallbackMessage: true });
+  const planner = await refreshSharedPlannerState();
+  stateRefs.currentDate = getSettings().nextServiceDate;
+  renderAll();
+  if (planner.fromCache) {
+    alert("No se pudo conectar con el plan compartido. Se muestran los últimos datos guardados y los cambios sin conexión se reintentarán.");
+  } else if (planner.conflicts > 0) {
+    alert("El plan cambió en otro dispositivo. Se cargó la información más reciente; revisa los cambios que no se pudieron aplicar.");
+  }
 
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./service-worker.js").catch(() => undefined);
