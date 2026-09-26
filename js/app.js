@@ -58,8 +58,6 @@ const stateRefs = {
   pendingAdd: null,
 };
 
-const STATUS_ICON = { selected: "○", confirmed: "●", completed: "✓" };
-
 const MEMBERSHIP_META = {
   [MEMBERSHIP_STATE.ROTATION]: { label: "En rotación" },
   [MEMBERSHIP_STATE.PAUSED]: { label: "En pausa" },
@@ -103,6 +101,41 @@ function getCurrentAssignment() {
   return getAssignments()
     .filter((item) => item.roleId === OPENING_READING_ROLE_ID && item.serviceDate === stateRefs.currentDate && item.status === STATUS.COMPLETED)
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0] || null;
+}
+
+let toastTimer = null;
+
+function notify(message, { tone = "error" } = {}) {
+  const region = document.getElementById("toast-region");
+  region.innerHTML = "";
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${tone}`;
+  toast.setAttribute("role", tone === "error" ? "alert" : "status");
+  const text = document.createElement("p");
+  text.textContent = message;
+  const dismiss = document.createElement("button");
+  dismiss.type = "button";
+  dismiss.className = "toast-dismiss";
+  dismiss.setAttribute("aria-label", "Cerrar aviso");
+  dismiss.appendChild(createIcon("close"));
+  dismiss.addEventListener("click", () => hideToast());
+  toast.append(text, dismiss);
+  region.appendChild(toast);
+  if (typeof region.showPopover === "function") {
+    if (region.matches(":popover-open")) region.hidePopover();
+    region.showPopover();
+  } else {
+    region.classList.add("is-open");
+  }
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, tone === "error" ? 8000 : 4000);
+}
+
+function hideToast() {
+  const region = document.getElementById("toast-region");
+  clearTimeout(toastTimer);
+  if (typeof region.hidePopover === "function" && region.matches(":popover-open")) region.hidePopover();
+  region.classList.remove("is-open");
 }
 
 function announce(message) {
@@ -155,7 +188,7 @@ function renderHome() {
   const statusBadge = document.getElementById("assignment-status");
   statusBadge.hidden = !status;
   statusBadge.className = `status-badge status-${status || "none"}`;
-  statusBadge.textContent = status ? `${STATUS_ICON[status] || ""} ${STATUS_TEXT[status]}`.trim() : "";
+  statusBadge.textContent = status ? STATUS_TEXT[status] : "";
 
   const actionState = getHomeActionState(currentAssignment);
   setButtonState("btn-select-person", actionState.canSelect);
@@ -179,8 +212,6 @@ function renderHome() {
     helper.textContent = "";
   }
   document.getElementById("rotation-empty").hidden = hasEligiblePeople;
-  const progress = stats.rotationTotal ? Math.round((stats.participated / stats.rotationTotal) * 100) : 0;
-  document.getElementById("rotation-meter-fill").style.width = `${progress}%`;
   document.getElementById("rotation-progress-label").textContent = hasEligiblePeople
     ? `${stats.participated} de ${stats.rotationTotal} han participado`
     : "";
@@ -230,7 +261,7 @@ function renderPeopleSheet(type) {
   const config = {
     eligible: ["Personas elegibles", "No hay personas elegibles. Revisa quién está activo o en pausa."],
     participated: ["Ya participaron", "Nadie ha participado todavía."],
-    waiting: ["Esperando oportunidad", "Todos han participado al menos una vez. 🎉"],
+    waiting: ["Esperando oportunidad", "Todos han participado al menos una vez."],
   }[type];
   const rows = getSheetPeople(type);
   document.getElementById("sheet-title").textContent = `${config[0]} (${rows.length})`;
@@ -269,7 +300,7 @@ function selectPerson() {
   try {
     assertCanSelectPerson(current);
   } catch (error) {
-    alert(error.message);
+    notify(error.message);
     return;
   }
 
@@ -283,7 +314,7 @@ function selectPerson() {
   });
 
   if (!picked) {
-    alert("No se encontró una persona elegible. Revise quiénes están activos o en pausa.");
+    notify("No se encontró una persona elegible. Revise quiénes están activos o en pausa.");
     return;
   }
 
@@ -297,7 +328,7 @@ function confirmCurrentAssignment() {
   try {
     upsertAssignment(confirmAssignment(current));
   } catch (error) {
-    alert(error.message);
+    notify(error.message);
     return;
   }
   renderAll();
@@ -309,7 +340,7 @@ function completeCurrentAssignment() {
   try {
     upsertAssignment(completeAssignment(current));
   } catch (error) {
-    alert(error.message);
+    notify(error.message);
     return;
   }
   renderAll();
@@ -323,7 +354,7 @@ async function declineAndReplace(reasonCode, reasonText) {
   try {
     declinedAssignment = declineAssignment(current, { reasonCode, reasonText });
   } catch (error) {
-    alert(error.message);
+    notify(error.message);
     return;
   }
 
@@ -334,7 +365,7 @@ async function declineAndReplace(reasonCode, reasonText) {
       await updateSharedPerson(current.personId, { active: false, paused: false });
     }
   } catch (error) {
-    alert(error.message);
+    notify(error.message);
     if (!error.localSaved) {
       return;
     }
@@ -352,7 +383,7 @@ async function declineAndReplace(reasonCode, reasonText) {
   if (nextPerson) {
     createSelectionAssignment(nextPerson.id);
   } else {
-    alert("No hay otra persona elegible para este servicio.");
+    notify("No hay otra persona elegible para este servicio.");
   }
   renderAll();
   const replacement = getCurrentAssignment();
@@ -565,7 +596,7 @@ function setupHomeInteractions() {
 async function refreshPeople({ showFallbackMessage = false } = {}) {
   const { fromCache, error } = await loadPeople();
   if (fromCache && showFallbackMessage) {
-    alert(
+    notify(
       `No se pudo conectar con la base de datos compartida de personas. Se están mostrando datos locales en caché. ${error?.message || ""}`.trim(),
     );
   }
@@ -584,7 +615,7 @@ function setupPeopleHandlers() {
       saved = true;
     } catch (error) {
       saved = error.localSaved === true;
-      alert(error.message);
+      notify(error.message);
     }
 
     if (!saved) return;
@@ -658,7 +689,7 @@ function setupPeopleHandlers() {
       saved = true;
     } catch (error) {
       saved = error.localSaved === true;
-      alert(error.message);
+      notify(error.message);
     }
     if (!saved) return;
     editDialog.close();
@@ -693,7 +724,7 @@ function exportBackup() {
 
 async function importBackup(file) {
   if (!file) {
-    alert("Primero seleccione un archivo de respaldo.");
+    notify("Primero seleccione un archivo de respaldo.");
     return;
   }
 
@@ -702,21 +733,21 @@ async function importBackup(file) {
   try {
     parsed = JSON.parse(text);
   } catch {
-    alert("El archivo JSON no es válido.");
+    notify("El archivo JSON no es válido.");
     return;
   }
 
   try {
     replaceStateFromImport(parsed);
   } catch (error) {
-    alert(error.message);
+    notify(error.message);
     return;
   }
 
   const settings = getSettings();
   stateRefs.currentDate = settings.nextServiceDate;
   renderAll();
-  alert("Respaldo importado correctamente.");
+  notify("Respaldo importado correctamente.", { tone: "info" });
 }
 
 function setupAssignmentActions() {
@@ -725,7 +756,7 @@ function setupAssignmentActions() {
   document.getElementById("btn-complete").addEventListener("click", completeCurrentAssignment);
   document.getElementById("btn-decline").addEventListener("click", () => {
     if (!getHomeActionState(getCurrentAssignment()).canDecline) {
-      alert("No hay una asignación activa para reemplazar.");
+      notify("No hay una asignación activa para reemplazar.");
       return;
     }
     document.getElementById("decline-dialog").showModal();
@@ -771,6 +802,7 @@ async function bootstrap() {
   setupAssignmentActions();
   setupSettings();
   renderAll();
+  document.body.classList.remove("is-loading");
 
   await refreshPeople({ showFallbackMessage: true });
 
@@ -781,5 +813,6 @@ async function bootstrap() {
 
 bootstrap().catch((error) => {
   console.error(error);
-  alert("No se pudieron cargar los datos de la aplicación.");
+  document.body.classList.remove("is-loading");
+  notify("No se pudieron cargar los datos de la aplicación.");
 });
