@@ -3,7 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#7f5539" />
+    <meta name="theme-color" content="#f6f1ea" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#17120f" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
     <meta name="description" content="Planificador móvil de la IBCH para asignar la Lectura Inicial." />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -11,14 +13,32 @@
     <link rel="manifest" href="./manifest.json" />
     <link rel="icon" type="image/svg+xml" href="./icons/icon-192.svg" />
     <link rel="apple-touch-icon" href="./icons/icon-192.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Geist:wght@400;500;600&display=swap" />
     <link rel="stylesheet" href="./css/app.css" />
     <title>Planificador de Servicios IBCH</title>
   </head>
   <body>
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+      <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z" /></symbol>
+      <symbol id="i-people" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3.25" /><path d="M3.5 19c.6-3 2.8-4.75 5.5-4.75S13.9 16 14.5 19" /><path d="M15.5 5.6a3.1 3.1 0 0 1 0 5.8M17.5 14.6c1.6.6 2.6 2.1 3 4.4" /></symbol>
+      <symbol id="i-history" viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3" /><path d="M4 4.5v3.7h3.7" /><path d="M12 8v4.2l2.8 1.8" /></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9" /><circle cx="15" cy="7" r="2" /><circle cx="9" cy="17" r="2" /></symbol>
+      <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14.5" rx="2.5" /><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4" /></symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9.5 6 6 6-6 6" /></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" /></symbol>
+    </svg>
+
     <div class="app-shell">
       <header class="app-header">
-        <h1>Planificador IBCH</h1>
-        <p class="subtitle">Lectura Inicial</p>
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">IB</span>
+          <div class="brand-text">
+            <h1>Planificador IBCH</h1>
+            <p class="subtitle">Lectura Inicial</p>
+          </div>
+        </div>
       </header>
       <p id="app-live-region" class="visually-hidden" aria-live="polite" aria-atomic="true"></p>
 
@@ -29,15 +49,17 @@
             <div class="date-control-wrap">
               <button id="btn-edit-service-date" class="date-trigger" type="button">
                 <span id="next-service-label">-</span>
-                <span aria-hidden="true">✎</span>
+                <span class="date-trigger-icon" aria-hidden="true"><svg class="icon"><use href="#i-calendar" /></svg></span>
               </button>
               <input id="home-service-date" class="native-date-input" type="date" tabindex="-1" aria-hidden="true" />
             </div>
-            <p class="role-label">Lectura Inicial</p>
+
             <div class="assignment-block">
-              <p class="label">Persona asignada</p>
+              <div class="assignment-meta">
+                <p class="label">Persona asignada</p>
+                <p id="assignment-status" class="status-badge" hidden></p>
+              </div>
               <p id="assignment-person" class="assignment-person">Sin asignar aún</p>
-              <p id="assignment-status" class="status-badge" hidden></p>
               <p id="assignment-helper" class="muted assignment-helper"></p>
             </div>
             <div class="button-row hero-actions">
@@ -49,20 +71,27 @@
             </div>
           </article>
 
-          <article class="card rotation-card">
-            <h2>La rotación</h2>
+          <section class="rotation-card" aria-labelledby="rotation-heading">
+            <div class="section-head">
+              <h2 id="rotation-heading">La rotación</h2>
+              <p id="rotation-progress-label" class="muted section-aside"></p>
+            </div>
+            <div class="rotation-meter" aria-hidden="true"><span id="rotation-meter-fill"></span></div>
             <div class="stats-grid" id="home-stats"></div>
             <p id="rotation-empty" class="muted rotation-empty" hidden>Aún no hay personas elegibles.</p>
-          </article>
+          </section>
         </section>
 
         <section class="view" id="view-people">
-          <article class="card people-header-card">
+          <header class="view-head">
+            <p class="eyebrow">Lista compartida</p>
             <h2 id="people-heading">Personas · 0 en rotación</h2>
+          </header>
+          <article class="card">
             <form id="add-person-form" class="stack">
               <label for="new-person-name">Agregar persona</label>
               <div class="inline-form">
-                <input id="new-person-name" name="new-person-name" type="text" maxlength="80" required />
+                <input id="new-person-name" name="new-person-name" type="text" maxlength="80" required placeholder="Nombre completo" />
                 <button type="submit" class="btn primary">Agregar</button>
               </div>
               <label for="new-person-title">Título (opcional)</label>
@@ -70,46 +99,54 @@
             </form>
             <p class="muted shared-roster-note">Los cambios se comparten con el equipo.</p>
           </article>
-          <article class="card">
+          <article class="card list-card">
             <ul id="people-list" class="people-list"></ul>
             <p id="people-empty" class="muted empty-list" hidden>Aún no hay personas en la lista. Agrega la primera para comenzar.</p>
           </article>
         </section>
 
         <section class="view" id="view-history">
-          <article class="card">
-            <h2>Historial de asignaciones</h2>
+          <header class="view-head">
+            <p class="eyebrow">Registro</p>
+            <h2>Historial</h2>
+          </header>
+          <article class="card list-card">
+            <h3 class="card-title">Asignaciones</h3>
             <ul id="history-list" class="history-list"></ul>
           </article>
-          <article class="card">
-            <h2>Participación</h2>
+          <article class="card list-card">
+            <h3 class="card-title">Participación</h3>
             <ul id="participation-list" class="history-list"></ul>
           </article>
         </section>
 
         <section class="view" id="view-settings">
-          <article class="card stack">
+          <header class="view-head">
+            <p class="eyebrow">Preferencias</p>
             <h2>Ajustes</h2>
+          </header>
+          <article class="card stack">
+            <h3 class="card-title">Próximo servicio</h3>
             <label for="next-service-date">Fecha del próximo servicio</label>
             <input id="next-service-date" type="date" />
             <button id="btn-save-date" class="btn">Guardar fecha</button>
           </article>
           <article class="card stack">
-            <h2>Respaldo</h2>
+            <h3 class="card-title">Respaldo</h3>
             <button id="btn-export" class="btn">Exportar respaldo</button>
             <label for="backup-file">Importar respaldo</label>
             <input id="backup-file" type="file" accept="application/json" />
             <button id="btn-import" class="btn">Importar respaldo</button>
-            <p class="muted">La importación reemplaza los datos locales actuales después de validarlos.</p>
+            <p class="muted fine-print">La importación reemplaza los datos locales actuales después de validarlos.</p>
           </article>
         </section>
       </main>
 
       <nav class="bottom-nav" aria-label="Navegación principal">
-        <button id="home-tab" data-tab="home" class="nav-btn active" aria-current="page"><span aria-hidden="true">⌂</span>Inicio</button>
-        <button id="people-tab" data-tab="people" class="nav-btn"><span aria-hidden="true">♙</span>Personas</button>
-        <button id="history-tab" data-tab="history" class="nav-btn"><span aria-hidden="true">◷</span>Historial</button>
-        <button id="settings-tab" data-tab="settings" class="nav-btn"><span aria-hidden="true">⚙</span>Ajustes</button>
+        <button id="home-tab" data-tab="home" class="nav-btn active" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-home" /></svg>Inicio</button>
+        <button id="people-tab" data-tab="people" class="nav-btn"><svg class="icon" aria-hidden="true"><use href="#i-people" /></svg>Personas</button>
+        <button id="history-tab" data-tab="history" class="nav-btn"><svg class="icon" aria-hidden="true"><use href="#i-history" /></svg>Historial</button>
+        <button id="settings-tab" data-tab="settings" class="nav-btn"><svg class="icon" aria-hidden="true"><use href="#i-settings" /></svg>Ajustes</button>
       </nav>
     </div>
 
@@ -130,7 +167,7 @@
           Notas
           <input id="decline-notes" type="text" maxlength="140" placeholder="Opcional" />
         </label>
-        <div class="button-row">
+        <div class="button-row dialog-actions">
           <button value="cancel" class="btn">Cancelar</button>
           <button id="btn-submit-decline" value="submit" class="btn primary">Guardar y reemplazar</button>
         </div>
@@ -140,8 +177,9 @@
     <dialog id="people-sheet" class="bottom-sheet" aria-modal="true" aria-labelledby="sheet-title">
       <div class="sheet-content">
         <header class="sheet-header">
+          <span class="sheet-grabber" aria-hidden="true"></span>
           <h2 id="sheet-title"></h2>
-          <button id="btn-close-sheet" class="sheet-close" type="button" aria-label="Cerrar lista">×</button>
+          <button id="btn-close-sheet" class="sheet-close" type="button" aria-label="Cerrar lista"><svg class="icon" aria-hidden="true"><use href="#i-close" /></svg></button>
         </header>
         <div class="sheet-body">
           <ul id="sheet-people-list" class="sheet-list"></ul>

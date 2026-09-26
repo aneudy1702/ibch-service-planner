@@ -1,5 +1,4 @@
 import {
-  ROLES,
   addAssignment,
   exportState,
   getAssignments,
@@ -62,9 +61,9 @@ const stateRefs = {
 const STATUS_ICON = { selected: "○", confirmed: "●", completed: "✓" };
 
 const MEMBERSHIP_META = {
-  [MEMBERSHIP_STATE.ROTATION]: { label: "En rotación", icon: "●" },
-  [MEMBERSHIP_STATE.PAUSED]: { label: "En pausa", icon: "Ⅱ" },
-  [MEMBERSHIP_STATE.OUT]: { label: "Fuera de rotación", icon: "○" },
+  [MEMBERSHIP_STATE.ROTATION]: { label: "En rotación" },
+  [MEMBERSHIP_STATE.PAUSED]: { label: "En pausa" },
+  [MEMBERSHIP_STATE.OUT]: { label: "Fuera de rotación" },
 };
 
 function uid(prefix) {
@@ -110,6 +109,25 @@ function announce(message) {
   const region = document.getElementById("app-live-region");
   region.textContent = "";
   requestAnimationFrame(() => { region.textContent = message; });
+}
+
+function createIcon(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "icon");
+  svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+  use.setAttribute("href", `#i-${name}`);
+  svg.appendChild(use);
+  return svg;
+}
+
+function getInitials(name) {
+  return (name || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0].toUpperCase())
+    .join("");
 }
 
 function setButtonState(buttonId, enabled) {
@@ -161,6 +179,11 @@ function renderHome() {
     helper.textContent = "";
   }
   document.getElementById("rotation-empty").hidden = hasEligiblePeople;
+  const progress = stats.rotationTotal ? Math.round((stats.participated / stats.rotationTotal) * 100) : 0;
+  document.getElementById("rotation-meter-fill").style.width = `${progress}%`;
+  document.getElementById("rotation-progress-label").textContent = hasEligiblePeople
+    ? `${stats.participated} de ${stats.rotationTotal} han participado`
+    : "";
   const statsRoot = document.getElementById("home-stats");
   statsRoot.innerHTML = "";
 
@@ -180,7 +203,7 @@ function renderHome() {
     const chevron = document.createElement("span");
     chevron.className = "stat-chevron";
     chevron.setAttribute("aria-hidden", "true");
-    chevron.textContent = "›";
+    chevron.appendChild(createIcon("chevron"));
     const label = document.createElement("span");
     label.textContent = stat.label;
     card.append(value, chevron, label);
@@ -352,6 +375,11 @@ function renderPeople() {
   people.forEach((person) => {
     const li = document.createElement("li");
     li.className = "people-item";
+    const membershipState = getMembershipState(person);
+    const avatar = document.createElement("span");
+    avatar.className = `person-avatar${membershipState === MEMBERSHIP_STATE.ROTATION ? "" : " is-inactive"}`;
+    avatar.setAttribute("aria-hidden", "true");
+    avatar.textContent = getInitials(person.name);
     const identity = document.createElement("div");
     identity.className = "person-identity";
     const name = document.createElement("strong");
@@ -364,13 +392,12 @@ function renderPeople() {
       identity.appendChild(title);
     }
 
-    const membershipState = getMembershipState(person);
     const membership = document.createElement("span");
     membership.className = `membership-chip membership-${membershipState}`;
-    membership.textContent = `${MEMBERSHIP_META[membershipState].icon} ${MEMBERSHIP_META[membershipState].label}`;
+    membership.textContent = MEMBERSHIP_META[membershipState].label;
 
     const summary = summaries.get(person.id);
-    const participation = document.createElement("p");
+    const participation = document.createElement("span");
     participation.className = "muted person-participation";
     participation.textContent = summary?.completedCount
       ? `Última vez: ${formatDate(summary.lastServiceDate)} · ${summary.completedCount} ${summary.completedCount === 1 ? "vez" : "veces"}`
@@ -387,7 +414,11 @@ function renderPeople() {
     renameBtn.setAttribute("aria-label", `Editar ${displayPersonName(person)}`);
 
     actions.append(renameBtn);
-    li.append(identity, membership, participation, actions);
+    const meta = document.createElement("div");
+    meta.className = "person-meta";
+    meta.append(membership, participation);
+
+    li.append(avatar, identity, meta, actions);
     list.appendChild(li);
   });
 }
@@ -407,20 +438,22 @@ function renderHistory() {
   }
   assignments.forEach((assignment) => {
     const person = people.find((item) => item.id === assignment.personId);
-    const role = ROLES.find((item) => item.id === assignment.roleId);
     const li = document.createElement("li");
     li.className = "history-item";
-    const dateEl = document.createElement("strong");
+    const dateEl = document.createElement("span");
+    dateEl.className = "history-date";
     dateEl.textContent = formatDate(assignment.serviceDate);
 
+    const row = document.createElement("div");
+    row.className = "history-row";
     const personEl = document.createElement("div");
     personEl.textContent = displayPersonName(person) || "Persona desconocida";
+    const statusEl = document.createElement("span");
+    statusEl.className = `status-badge status-${assignment.status}`;
+    statusEl.textContent = STATUS_TEXT[assignment.status] || assignment.status;
+    row.append(personEl, statusEl);
 
-    const roleStatus = document.createElement("div");
-    roleStatus.className = "muted";
-    roleStatus.textContent = `${role?.displayNameEs || assignment.roleId} · ${STATUS_TEXT[assignment.status] || assignment.status}`;
-
-    li.append(dateEl, personEl, roleStatus);
+    li.append(dateEl, row);
 
     if (assignment.reasonCode) {
       const reasonEl = document.createElement("div");
@@ -444,15 +477,18 @@ function renderHistory() {
     const li = document.createElement("li");
     li.className = "history-item";
     const person = people.find((entry) => entry.id === item.personId);
-    const nameEl = document.createElement("strong");
+    const row = document.createElement("div");
+    row.className = "history-row";
+    const nameEl = document.createElement("div");
     nameEl.textContent = displayPersonName(person) || item.name;
-    const completedEl = document.createElement("div");
-    completedEl.className = "muted";
-    completedEl.textContent = `Veces completadas: ${item.completedCount}`;
+    const completedEl = document.createElement("span");
+    completedEl.className = "status-badge";
+    completedEl.textContent = `${item.completedCount} ${item.completedCount === 1 ? "vez" : "veces"}`;
+    row.append(nameEl, completedEl);
     const lastServedEl = document.createElement("div");
     lastServedEl.className = "muted";
     lastServedEl.textContent = `Última vez: ${item.lastServiceDate ? formatDate(item.lastServiceDate) : "Nunca"}`;
-    li.append(nameEl, completedEl, lastServedEl);
+    li.append(row, lastServedEl);
     participationList.appendChild(li);
   });
 }
