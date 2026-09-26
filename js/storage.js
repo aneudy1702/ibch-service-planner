@@ -67,6 +67,13 @@ function defaultState(seedPeople = []) {
     assignments: [],
     settings: {
       nextServiceDate: nextSundayIsoDate(),
+      sharedVersion: null,
+      sharedUpdatedAt: null,
+    },
+    plannerSync: {
+      pendingOperations: [],
+      conflictOperations: [],
+      legacyBootstrapCompleted: false,
     },
     meta: {
       createdAt: timestamp,
@@ -85,9 +92,21 @@ function normalizeState(candidate) {
     assignments: candidate.assignments.map((assignment) => ({
       ...assignment,
       personId: normalizePersonId(assignment.personId),
+      version: Number.isInteger(assignment.version) ? assignment.version : null,
     })),
     settings: {
       nextServiceDate: candidate.settings.nextServiceDate,
+      sharedVersion: Number.isInteger(candidate.settings.sharedVersion) ? candidate.settings.sharedVersion : null,
+      sharedUpdatedAt: typeof candidate.settings.sharedUpdatedAt === "string" ? candidate.settings.sharedUpdatedAt : null,
+    },
+    plannerSync: {
+      pendingOperations: Array.isArray(candidate.plannerSync?.pendingOperations)
+        ? [...candidate.plannerSync.pendingOperations]
+        : [],
+      conflictOperations: Array.isArray(candidate.plannerSync?.conflictOperations)
+        ? [...candidate.plannerSync.conflictOperations]
+        : [],
+      legacyBootstrapCompleted: candidate.plannerSync?.legacyBootstrapCompleted === true,
     },
     meta: {
       createdAt: typeof candidate.meta?.createdAt === "string" ? candidate.meta.createdAt : timestamp,
@@ -169,6 +188,78 @@ export function saveSettings(settings) {
   return saveState({ ...state, settings: { ...state.settings, ...settings } });
 }
 
+export function saveSharedPlannerCache({ assignments, settings }) {
+  const state = getState();
+  if (!state) return null;
+  return saveState({
+    ...state,
+    assignments: assignments.map((assignment) => ({ ...assignment })),
+    settings: settings
+      ? {
+          ...state.settings,
+          nextServiceDate: settings.nextServiceDate,
+          sharedVersion: settings.version,
+          sharedUpdatedAt: settings.updatedAt,
+        }
+      : state.settings,
+  });
+}
+
+export function getPlannerSyncState() {
+  return getState()?.plannerSync || {
+    pendingOperations: [],
+    conflictOperations: [],
+    legacyBootstrapCompleted: false,
+  };
+}
+
+function savePlannerSyncState(plannerSync) {
+  const state = getState();
+  if (!state) return null;
+  return saveState({ ...state, plannerSync });
+}
+
+export function queuePlannerOperation(operation) {
+  const sync = getPlannerSyncState();
+  if (sync.pendingOperations.some((item) => item.id === operation.id)) return sync;
+  const next = { ...sync, pendingOperations: [...sync.pendingOperations, operation] };
+  savePlannerSyncState(next);
+  return next;
+}
+
+export function removePlannerOperation(operationId) {
+  const sync = getPlannerSyncState();
+  const next = {
+    ...sync,
+    pendingOperations: sync.pendingOperations.filter((item) => item.id !== operationId),
+  };
+  savePlannerSyncState(next);
+  return next;
+}
+
+export function preservePlannerConflict(operation, message) {
+  const sync = getPlannerSyncState();
+  const conflictRecord = { ...operation, conflictMessage: message, conflictedAt: nowIso() };
+  const next = {
+    ...sync,
+    pendingOperations: sync.pendingOperations.filter((item) => item.id !== operation.id),
+    conflictOperations: [...sync.conflictOperations, conflictRecord],
+  };
+  savePlannerSyncState(next);
+  return next;
+}
+
+export function markLegacyBootstrapCompleted({ clearPending = false } = {}) {
+  const sync = getPlannerSyncState();
+  const next = {
+    ...sync,
+    legacyBootstrapCompleted: true,
+    pendingOperations: clearPending ? [] : sync.pendingOperations,
+  };
+  savePlannerSyncState(next);
+  return next;
+}
+
 export function addPerson(name, title = null) {
   const state = getState();
   if (!state) return null;
@@ -225,7 +316,15 @@ export function replaceStateFromImport(candidateState) {
   if (!isValidImportedState(candidateState)) {
     throw new Error("Invalid backup structure.");
   }
-  return saveState(normalizeState(candidateState));
+  const current = getState();
+  const imported = normalizeState(candidateState);
+  return saveState({
+    ...imported,
+    people: current ? current.people : imported.people,
+    assignments: current ? current.assignments : imported.assignments,
+    settings: current?.settings || imported.settings,
+    plannerSync: current?.plannerSync || imported.plannerSync,
+  });
 }
 
 export function exportState() {
